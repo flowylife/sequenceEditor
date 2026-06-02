@@ -186,6 +186,9 @@ describe("Sequence Editor app", () => {
       expect(screen.getByText(/Step 2 running/i)).toBeInTheDocument();
     });
     expect(screen.getByText("OVERLOAD tripped")).toBeInTheDocument();
+    expect(screen.getAllByText("Blocked by OL1 overload trip").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Permissive chain diagnosis")).toBeInTheDocument();
+    expect(screen.getByText("OL1 overload trip")).toBeInTheDocument();
     expect(screen.getAllByText(/K1 coil: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/PLC Y0: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
   });

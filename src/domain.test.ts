@@ -171,6 +171,30 @@ describe("electrical sequence domain", () => {
     expect(tripped.readings.find((reading) => reading.id === "r-k1")?.voltageVac).toBe(0);
   });
 
+  it("reports the open permissive device that blocks the K1 run chain", () => {
+    const project = createStarterProject();
+    const stopped = simulateStep(project.model, undefined, { startPressed: true, stopPressed: true });
+    const limited = simulateStep(project.model, undefined, { startPressed: true, limitClosed: false });
+    const overloaded = simulateStep(project.model, undefined, { startPressed: true, overloadHealthy: false });
+
+    expect(stopped.interlocks.find((interlock) => interlock.reference === "SB0")).toMatchObject({
+      state: "open",
+      blocking: true,
+      explanation: "STOP contact is open."
+    });
+    expect(limited.interlocks.find((interlock) => interlock.reference === "LS1")).toMatchObject({
+      state: "open",
+      blocking: true,
+      explanation: "Limit permissive is open."
+    });
+    expect(overloaded.interlocks.find((interlock) => interlock.reference === "OL1")).toMatchObject({
+      state: "open",
+      blocking: true,
+      explanation: "Overload trip contact is open."
+    });
+    expect(overloaded.blockingReason).toBe("Blocked by OL1 overload trip");
+  });
+
   it("projects sequence circuit behavior into IEC ladder rungs", () => {
     const project = createStarterProject();
     let snapshot = simulateStep(project.model, undefined, { startPressed: true });

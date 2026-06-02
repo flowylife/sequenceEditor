@@ -134,6 +134,8 @@ export interface SimulationSnapshot {
   inputs: SimulationInputs;
   timerElapsedMs: number;
   energizedNets: string[];
+  interlocks: SimulationInterlockStatus[];
+  blockingReason?: string;
   componentStates: Record<string, "open" | "closed" | "energized" | "idle">;
   readings: Array<{
     id: string;
@@ -141,6 +143,17 @@ export interface SimulationSnapshot {
     voltageVac: number;
     currentA: number;
   }>;
+}
+
+export interface SimulationInterlockStatus {
+  id: string;
+  componentId: string;
+  reference: string;
+  label: string;
+  state: "closed" | "open";
+  blocking: boolean;
+  explanation: string;
+  blockingReason: string;
 }
 
 export interface LogicElement {
@@ -1087,6 +1100,39 @@ export function simulateStep(
   const stopButtonClosed = !inputs.stopPressed;
   const limitClosed = inputs.limitClosed;
   const overloadClosed = inputs.overloadHealthy;
+  const interlocks: SimulationInterlockStatus[] = [
+    {
+      id: "interlock-stop",
+      componentId: getComponentByReference(model, "SB0")?.id ?? "missing-SB0",
+      reference: "SB0",
+      label: "SB0 stop contact",
+      state: stopButtonClosed ? "closed" : "open",
+      blocking: !stopButtonClosed,
+      explanation: stopButtonClosed ? "STOP contact is closed." : "STOP contact is open.",
+      blockingReason: "Blocked by SB0 stop contact"
+    },
+    {
+      id: "interlock-limit",
+      componentId: getComponentByReference(model, "LS1")?.id ?? "missing-LS1",
+      reference: "LS1",
+      label: "LS1 limit permissive",
+      state: limitClosed ? "closed" : "open",
+      blocking: !limitClosed,
+      explanation: limitClosed ? "Limit permissive is closed." : "Limit permissive is open.",
+      blockingReason: "Blocked by LS1 limit permissive"
+    },
+    {
+      id: "interlock-overload",
+      componentId: getComponentByReference(model, "OL1")?.id ?? "missing-OL1",
+      reference: "OL1",
+      label: "OL1 overload trip",
+      state: overloadClosed ? "closed" : "open",
+      blocking: !overloadClosed,
+      explanation: overloadClosed ? "Overload trip contact is closed." : "Overload trip contact is open.",
+      blockingReason: "Blocked by OL1 overload trip"
+    }
+  ];
+  const blockingReason = interlocks.find((interlock) => interlock.blocking)?.blockingReason;
   const stopChainClosed = stopButtonClosed && limitClosed;
   const startContactClosed = inputs.startPressed;
   const previousRelayEnergized = Object.entries(previous?.componentStates ?? {}).some(([componentId, state]) => {
@@ -1153,6 +1199,8 @@ export function simulateStep(
     inputs,
     timerElapsedMs,
     energizedNets,
+    interlocks,
+    blockingReason,
     componentStates,
     readings: [
       { id: "r-control", label: "Control supply", voltageVac: 24, currentA: loadCurrent },

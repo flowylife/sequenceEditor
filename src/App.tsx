@@ -1415,6 +1415,27 @@ function SimulationPanel({
           <span>{hardFault ? "Hard validation errors limit energization." : "Steady-state control behavior is being traced."}</span>
         </div>
       </div>
+      {snapshot?.blockingReason && (
+        <div className="fault-banner">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>{snapshot.blockingReason}</strong>
+            <span>K1 run chain is waiting for all NC permissive contacts to close.</span>
+          </div>
+        </div>
+      )}
+      {snapshot && (
+        <div className="permissive-list" aria-label="Permissive chain diagnosis">
+          <strong>Permissive chain</strong>
+          {snapshot.interlocks.map((interlock) => (
+            <div key={interlock.id} className={interlock.blocking ? "is-blocking" : ""}>
+              <span>{interlock.label}</span>
+              <b>{interlock.state}</b>
+              <small>{interlock.explanation}</small>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="net-list">
         <strong>Energized nets</strong>
         {(snapshot?.energizedNets ?? []).map((net) => (
@@ -1550,6 +1571,7 @@ function SimulationStrip({
         <span>STOP {inputs.stopPressed ? "open" : "closed"}</span>
         <span>LIMIT {inputs.limitClosed ? "closed" : "open"}</span>
         <span>OVERLOAD {inputs.overloadHealthy ? "healthy" : "tripped"}</span>
+        {snapshot?.blockingReason && <span>{snapshot.blockingReason}</span>}
         <span>Timer {snapshot ? `${snapshot.timerElapsedMs} ms` : "idle"}</span>
         {(snapshot?.readings ?? []).slice(0, 3).map((reading) => (
           <span key={reading.id}>{reading.label}: {reading.voltageVac.toFixed(0)} VAC / {reading.currentA.toFixed(2)} A</span>
