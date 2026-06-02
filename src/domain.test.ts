@@ -12,6 +12,7 @@ import {
   simulateStep,
   summarizeFindings,
   updateComponentSetting,
+  updatePanelPlacement,
   validateCircuit,
   validatePanelFit
 } from "./domain";
@@ -422,5 +423,25 @@ describe("electrical sequence domain", () => {
     expect(panelLayout.warningCount).toBeGreaterThanOrEqual(1);
     expect(controlRail?.items.some((item) => item.status === "warning")).toBe(true);
     expect(panelLayout.totalDepthMm).toBeGreaterThan(0);
+  });
+
+  it("updates semantic panel placement and flags mounting incompatibility", () => {
+    const project = createStarterProject();
+    const misplacedLamp = updatePanelPlacement(project.model, {
+      componentId: "c-hl1",
+      rail: "control-rail",
+      xMm: 220,
+      yMm: 0
+    });
+
+    const placement = misplacedLamp.panelPlacements.find((item) => item.componentId === "c-hl1");
+    const findings = validateCircuit(misplacedLamp);
+    const panelLayout = buildPanelLayout(misplacedLamp, findings);
+    const controlRail = panelLayout.rails.find((rail) => rail.id === "control-rail");
+    const lampItem = controlRail?.items.find((item) => item.componentId === "c-hl1");
+
+    expect(placement).toMatchObject({ rail: "control-rail", xMm: 220, yMm: 0 });
+    expect(findings.some((finding) => finding.ruleId === "MOUNTING_COMPATIBILITY" && finding.affectedObjectIds.includes("c-hl1"))).toBe(true);
+    expect(lampItem?.status).toBe("warning");
   });
 });

@@ -253,6 +253,22 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText(/fit warnings/i)).toBeInTheDocument();
   });
 
+  it("edits semantic panel placement and surfaces mounting compatibility warnings", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText(/HL1 pilot lamp/i));
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Panel placement rail"), { target: { value: "control-rail" } });
+    fireEvent.change(screen.getByLabelText("Panel placement x millimeters"), { target: { value: "220" } });
+
+    expect(screen.getByText("Control DIN rail @ 220 mm")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    expect(screen.getByText("MOUNTING_COMPATIBILITY")).toBeInTheDocument();
+    expect(screen.getByText(/HL1 is placed on a DIN rail zone/i)).toBeInTheDocument();
+  });
+
   it("shows semantic netlist topology in validation", () => {
     render(<App />);
 

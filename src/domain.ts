@@ -87,6 +87,13 @@ export interface UpdateComponentSettingInput {
   value: string | number | boolean;
 }
 
+export interface UpdatePanelPlacementInput {
+  componentId: string;
+  rail: PanelPlacement["rail"];
+  xMm: number;
+  yMm: number;
+}
+
 export interface PanelPlacement {
   componentId: string;
   rail: "control-rail" | "terminal-rail" | "virtual";
@@ -1057,6 +1064,31 @@ export function analyzeElectricalPaths(model: CircuitModel, snapshot?: Simulatio
 
 export function validatePanelFit(model: CircuitModel): ValidationFinding[] {
   const findings: ValidationFinding[] = [];
+  const componentById = new Map(model.components.map((component) => [component.id, component]));
+
+  for (const placement of model.panelPlacements) {
+    const component = componentById.get(placement.componentId);
+    if (!component) {
+      continue;
+    }
+
+    const definition = findDefinition(component.definitionId);
+    const railMounted = placement.rail === "control-rail" || placement.rail === "terminal-rail";
+    const incompatibleDinRail = definition.mechanical.mount === "din-rail" && !railMounted;
+    const incompatiblePanelFace = definition.mechanical.mount === "panel" && placement.rail !== "virtual";
+    if (incompatibleDinRail || incompatiblePanelFace) {
+      findings.push({
+        id: `mounting-compatibility-${component.id}`,
+        severity: "warning",
+        ruleId: "MOUNTING_COMPATIBILITY",
+        affectedObjectIds: [component.id],
+        title: `${component.reference} mounting does not match the placement zone`,
+        explanation: `${component.reference} is placed on a ${railMounted ? "DIN rail zone" : "panel face zone"}, but the selected part is specified for ${definition.mechanical.mount} mounting.`,
+        suggestedFix: "Move the part to a compatible placement zone or select a component definition with the correct mounting method."
+      });
+    }
+  }
+
   const placements = model.panelPlacements.filter((placement) => placement.rail !== "virtual");
 
   for (let i = 0; i < placements.length; i += 1) {
@@ -1380,7 +1412,7 @@ const panelRailLabels: Record<PanelPlacement["rail"], string> = {
 export function buildPanelLayout(model: CircuitModel, findings = validatePanelFit(model)): PanelLayoutModel {
   const clearanceWarnings = new Set(
     findings
-      .filter((finding) => finding.ruleId === "PANEL_CLEARANCE")
+      .filter((finding) => finding.ruleId === "PANEL_CLEARANCE" || finding.ruleId === "MOUNTING_COMPATIBILITY")
       .flatMap((finding) => finding.affectedObjectIds)
   );
   const placementsByComponentId = new Map(model.panelPlacements.map((placement) => [placement.componentId, placement]));
@@ -1468,6 +1500,31 @@ export function addComponent(model: CircuitModel, definitionId: string): Circuit
         yMm: definition.mechanical.mount === "din-rail" ? 0 : 120
       }
     ]
+  };
+}
+
+export function updatePanelPlacement(model: CircuitModel, input: UpdatePanelPlacementInput): CircuitModel {
+  const component = model.components.find((item) => item.id === input.componentId);
+  if (!component) {
+    throw new Error(`Invalid panel placement component: ${input.componentId}`);
+  }
+  if (!Number.isFinite(input.xMm) || !Number.isFinite(input.yMm)) {
+    throw new Error("Panel placement coordinates must be finite millimeter values.");
+  }
+
+  const nextPlacement: PanelPlacement = {
+    componentId: input.componentId,
+    rail: input.rail,
+    xMm: Math.max(0, input.xMm),
+    yMm: Math.max(0, input.yMm)
+  };
+  const existing = model.panelPlacements.some((placement) => placement.componentId === input.componentId);
+
+  return {
+    ...model,
+    panelPlacements: existing
+      ? model.panelPlacements.map((placement) => (placement.componentId === input.componentId ? nextPlacement : placement))
+      : [...model.panelPlacements, nextPlacement]
   };
 }
 

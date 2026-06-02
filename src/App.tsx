@@ -51,6 +51,7 @@ import {
   summarizeFindings,
   updateComponentReference,
   updateComponentSetting,
+  updatePanelPlacement,
   validateCircuit,
   type CircuitComponent,
   type CircuitModel,
@@ -63,6 +64,7 @@ import {
   buildLogicModel,
   buildPanelLayout,
   type PanelLayoutModel,
+  type PanelPlacement,
   type SimulationInputs,
   type SimulationSnapshot,
   type ValidationFinding
@@ -388,6 +390,13 @@ function App() {
     setSelectedId(componentId);
   };
 
+  const updateSelectedPlacement = (componentId: string, placement: Omit<PanelPlacement, "componentId">) => {
+    const next = updatePanelPlacement(model, { componentId, ...placement });
+    setValidationError(null);
+    commitModel(next);
+    setSelectedId(componentId);
+  };
+
   const loadEmptyProject = () => {
     const emptyModel: CircuitModel = { components: [], conductors: [], panelPlacements: [] };
     setProjectName("Untitled sequence project");
@@ -707,6 +716,7 @@ function App() {
                     onRemoveConductor={deleteManualConductor}
                     onUpdateReference={updateSelectedReference}
                     onUpdateSetting={updateSelectedSetting}
+                    onUpdatePlacement={updateSelectedPlacement}
                   />
                 )}
                 {inspectorTab === "validation" && (
@@ -1126,17 +1136,19 @@ function SpecsPanel({
   onAddConductor,
   onRemoveConductor,
   onUpdateReference,
-  onUpdateSetting
+  onUpdateSetting,
+  onUpdatePlacement
 }: {
   component: CircuitComponent;
   definition: ComponentDefinition;
-  placement?: { rail: string; xMm: number; yMm: number };
+  placement?: PanelPlacement;
   components: CircuitComponent[];
   conductors: CircuitModel["conductors"];
   onAddConductor: (input: AddConductorInput) => void;
   onRemoveConductor: (conductorId: string) => void;
   onUpdateReference: (componentId: string, reference: string) => void;
   onUpdateSetting: (componentId: string, key: string, value: string | number | boolean) => void;
+  onUpdatePlacement: (componentId: string, placement: Omit<PanelPlacement, "componentId">) => void;
 }) {
   const firstTarget = components.find((item) => item.id !== component.id) ?? component;
   const [sourceTerminal, setSourceTerminal] = useState(definition.terminals[0]?.id ?? "");
@@ -1148,6 +1160,14 @@ function SpecsPanel({
   const [wiringError, setWiringError] = useState<string | null>(null);
   const selectedConductors = conductors.filter((conductor) => conductor.from === component.id || conductor.to === component.id);
   const referenceById = new Map(components.map((item) => [item.id, item.reference]));
+  const currentPlacement: Omit<PanelPlacement, "componentId"> = placement ?? {
+    rail: definition.mechanical.mount === "din-rail" ? "control-rail" : "virtual",
+    xMm: 0,
+    yMm: definition.mechanical.mount === "din-rail" ? 0 : 120
+  };
+  const updatePlacement = (patch: Partial<Omit<PanelPlacement, "componentId">>) => {
+    onUpdatePlacement(component.id, { ...currentPlacement, ...patch });
+  };
 
   const updateTargetComponent = (componentId: string) => {
     const nextTarget = components.find((item) => item.id === componentId);
@@ -1217,6 +1237,61 @@ function SpecsPanel({
         <div>
           <dt>Panel fit</dt>
           <dd>{placement ? `${railLabels[placement.rail]} @ ${placement.xMm} mm` : "Not placed"}</dd>
+        </div>
+        <div>
+          <dt>Panel rail</dt>
+          <dd>
+            <select
+              aria-label="Panel placement rail"
+              className="reference-input"
+              value={currentPlacement.rail}
+              onChange={(event) => updatePlacement({ rail: event.target.value as PanelPlacement["rail"] })}
+            >
+              <option value="control-rail">Control DIN rail</option>
+              <option value="terminal-rail">Terminal DIN rail</option>
+              <option value="virtual">Panel face</option>
+            </select>
+          </dd>
+        </div>
+        <div>
+          <dt>Panel X</dt>
+          <dd>
+            <input
+              aria-label="Panel placement x millimeters"
+              className="reference-input"
+              type="number"
+              min="0"
+              step="1"
+              value={currentPlacement.xMm}
+              onChange={(event) => {
+                const nextValue = Number(event.target.value);
+                if (Number.isFinite(nextValue)) {
+                  updatePlacement({ xMm: nextValue });
+                }
+              }}
+            />
+            <small className="field-hint">mm from rail origin</small>
+          </dd>
+        </div>
+        <div>
+          <dt>Panel Y</dt>
+          <dd>
+            <input
+              aria-label="Panel placement y millimeters"
+              className="reference-input"
+              type="number"
+              min="0"
+              step="1"
+              value={currentPlacement.yMm}
+              onChange={(event) => {
+                const nextValue = Number(event.target.value);
+                if (Number.isFinite(nextValue)) {
+                  updatePlacement({ yMm: nextValue });
+                }
+              }}
+            />
+            <small className="field-hint">mm vertical zone offset</small>
+          </dd>
         </div>
         {definition.kind === "timer" && (
           <div>
