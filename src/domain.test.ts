@@ -30,10 +30,24 @@ describe("electrical sequence domain", () => {
   it("models the K1 seal-in contact as a complete parallel path", () => {
     const project = createStarterProject();
     const netlist = buildNetlist(project.model);
-    const stopChain = netlist.nets.find((net) => net.id === "STOP-CHAIN");
+    const interlockChain = netlist.nets.find((net) => net.id === "INTERLOCK-CHAIN");
 
-    expect(stopChain?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("K1.13:13");
+    expect(interlockChain?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("K1.13:13");
     expect(validateCircuit(project.model).some((finding) => finding.ruleId === "SEAL_IN_PATH_TOPOLOGY")).toBe(false);
+  });
+
+  it("models LS1 as a normally-closed limit interlock in the starter chain", () => {
+    const project = createStarterProject();
+    const netlist = buildNetlist(project.model);
+    const stopChain = netlist.nets.find((net) => net.id === "STOP-CHAIN");
+    const interlockChain = netlist.nets.find((net) => net.id === "INTERLOCK-CHAIN");
+
+    expect(project.model.components.map((component) => component.reference)).toContain("LS1");
+    expect(stopChain?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("LS1:21");
+    expect(interlockChain?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toEqual(
+      expect.arrayContaining(["LS1:22", "SB1:13", "K1.13:13"])
+    );
+    expect(validateCircuit(project.model).some((finding) => finding.ruleId === "LIMIT_INTERLOCK_TOPOLOGY")).toBe(false);
   });
 
   it("simulates relay seal-in before the timer output is ready", () => {
@@ -107,6 +121,22 @@ describe("electrical sequence domain", () => {
     expect(stopped.energizedNets).not.toContain("START-LATCH");
   });
 
+  it("opens LS1 and drops the sealed relay and timer branch", () => {
+    const project = createStarterProject();
+    const running = simulateStep(project.model, undefined, { startPressed: true, limitClosed: true });
+    const tripped = simulateStep(project.model, running, { startPressed: false, stopPressed: false, limitClosed: false });
+
+    expect(tripped.componentStates["c-ls1"]).toBe("open");
+    expect(tripped.componentStates["c-k1"]).toBe("idle");
+    expect(tripped.componentStates["c-k1a"]).toBe("open");
+    expect(tripped.componentStates["c-kt1"]).toBe("idle");
+    expect(tripped.componentStates["c-y0"]).toBe("idle");
+    expect(tripped.timerElapsedMs).toBe(0);
+    expect(tripped.energizedNets).toContain("STOP-CHAIN");
+    expect(tripped.energizedNets).not.toContain("INTERLOCK-CHAIN");
+    expect(tripped.energizedNets).not.toContain("START-LATCH");
+  });
+
   it("projects sequence circuit behavior into IEC ladder rungs", () => {
     const project = createStarterProject();
     let snapshot = simulateStep(project.model, undefined, { startPressed: true });
@@ -118,7 +148,7 @@ describe("electrical sequence domain", () => {
     expect(logicModel.standard).toBe("IEC_61131_3_LD");
     expect(logicModel.rungs).toHaveLength(3);
     expect(logicModel.rungs[0].label).toContain("Start/stop");
-    expect(logicModel.rungs[0].inputs.map((input) => input.reference)).toEqual(["SB0", "SB1"]);
+    expect(logicModel.rungs[0].inputs.map((input) => input.reference)).toEqual(["SB0", "LS1", "SB1"]);
     expect(logicModel.rungs[0].sealIn?.reference).toBe("K1.13");
     expect(logicModel.rungs[2].output.reference).toBe("Y0");
     expect(logicModel.rungs.every((rung) => rung.energized)).toBe(true);
@@ -239,6 +269,15 @@ describe("electrical sequence domain", () => {
     expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "SEAL_IN_PATH_TOPOLOGY")).toBe(true);
   });
 
+  it("flags a limit switch that is missing from the stop/interlock chain", () => {
+    const project = createStarterProject();
+    const brokenInterlock = removeConductor(project.model, "w11");
+
+    const findings = validateCircuit(brokenInterlock);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "LIMIT_INTERLOCK_TOPOLOGY")).toBe(true);
+  });
+
   it("checks simple DIN rail mechanical clearance", () => {
     const project = createStarterProject();
     const findings = validatePanelFit(project.model);
@@ -258,6 +297,7 @@ describe("electrical sequence domain", () => {
     expect(controlBranch?.designCurrentA).toBeCloseTo(0.54, 2);
     expect(controlBranch?.liveCurrentA).toBeCloseTo(0.54, 2);
     expect(controlBranch?.weakestContactRatingA).toBe(3);
+    expect(controlBranch?.path).toContain("LS1");
   });
 
   it("turns insufficient contact rating into a validation finding", () => {

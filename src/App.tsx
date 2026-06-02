@@ -87,8 +87,13 @@ const railLabels: Record<string, string> = {
 
 const initialSimulationInputs: SimulationInputs = {
   startPressed: true,
-  stopPressed: false
+  stopPressed: false,
+  limitClosed: true
 };
+
+function getDefaultSelectedComponentId(model: CircuitModel) {
+  return model.components.find((component) => component.reference === "K1")?.id ?? model.components[0]?.id;
+}
 
 function DeviceNode({ data, selected }: NodeProps<Node<CircuitNodeData>>) {
   const nodeData = data as CircuitNodeData;
@@ -160,6 +165,7 @@ function getFirstTerminal(definition: ComponentDefinition, preferred: "source" |
 const signalRows = [
   { key: "start", label: "SB1 START" },
   { key: "stop", label: "SB0 STOP" },
+  { key: "limit", label: "LS1 LIMIT" },
   { key: "k1", label: "K1 Coil" },
   { key: "seal", label: "K1 13-14" },
   { key: "timer", label: "KT1 TON" },
@@ -173,6 +179,8 @@ function signalActive(snapshot: SimulationSnapshot, key: (typeof signalRows)[num
       return snapshot.inputs.startPressed;
     case "stop":
       return !snapshot.inputs.stopPressed;
+    case "limit":
+      return snapshot.inputs.limitClosed;
     case "k1":
       return Object.entries(snapshot.componentStates).some(([componentId, state]) => componentId === "c-k1" && state === "energized");
     case "seal":
@@ -191,7 +199,7 @@ function App() {
   const reactFlowNodeTypes = useMemo(() => nodeTypes, []);
   const [model, setModel] = useState<CircuitModel>(starterProject.model);
   const [projectName, setProjectName] = useState(starterProject.name);
-  const [selectedId, setSelectedId] = useState<string | undefined>(starterProject.model.components[4]?.id);
+  const [selectedId, setSelectedId] = useState<string | undefined>(getDefaultSelectedComponentId(starterProject.model));
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("validation");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("cad");
   const [cadViewMode, setCadViewMode] = useState<CadViewMode>("schematic");
@@ -332,7 +340,7 @@ function App() {
   const resetSimulation = () => {
     setSnapshot(undefined);
     setSimulationHistory([]);
-    setSimulationInputs({ startPressed: false, stopPressed: false });
+    setSimulationInputs({ startPressed: false, stopPressed: false, limitClosed: true });
     setInspectorTab("simulation");
   };
 
@@ -399,7 +407,7 @@ function App() {
       setActiveRevision(project.activeRevision);
       setHistory([project.model]);
       setModel(project.model);
-      setSelectedId(project.model.components[4]?.id);
+      setSelectedId(getDefaultSelectedComponentId(project.model));
       setSimulationInputs(initialSimulationInputs);
       {
         const nextSnapshot = simulateStep(project.model, undefined, initialSimulationInputs);
@@ -417,7 +425,7 @@ function App() {
       setActiveRevision(next.activeRevision);
       setHistory([next.model]);
       setModel(next.model);
-      setSelectedId(next.model.components[4]?.id);
+      setSelectedId(getDefaultSelectedComponentId(next.model));
       setSimulationInputs(initialSimulationInputs);
       {
         const nextSnapshot = simulateStep(next.model, undefined, initialSimulationInputs);
@@ -769,15 +777,17 @@ function SchematicWorkspace({
           <SchematicDevice reference="FU1" label="Fuse 2A" x={234} y={170} kind="fuse" energized={isClosed("FU1")} selected={isSelected("FU1")} onSelect={() => select("FU1")} />
           <SchematicWire d="M274 170 H336" energized={netOn("L24-CONTROL")} />
           <SchematicContact reference="SB0" label="STOP NC" x={336} y={170} normallyClosed closed={isClosed("SB0")} selected={isSelected("SB0")} onSelect={() => select("SB0")} />
-          <SchematicWire d="M386 170 H466" energized={netOn("STOP-CHAIN")} />
-          <SchematicContact reference="SB1" label="START NO" x={466} y={170} closed={isClosed("SB1")} selected={isSelected("SB1")} onSelect={() => select("SB1")} />
-          <SchematicWire d="M516 170 H760" energized={netOn("START-LATCH") || netOn("SEAL-IN")} />
+          <SchematicWire d="M386 170 H438" energized={netOn("STOP-CHAIN")} />
+          <SchematicContact reference="LS1" label="LIMIT NC" x={438} y={170} normallyClosed closed={isClosed("LS1")} selected={isSelected("LS1")} onSelect={() => select("LS1")} />
+          <SchematicWire d="M488 170 H568" energized={netOn("INTERLOCK-CHAIN")} />
+          <SchematicContact reference="SB1" label="START NO" x={568} y={170} closed={isClosed("SB1")} selected={isSelected("SB1")} onSelect={() => select("SB1")} />
+          <SchematicWire d="M618 170 H760" energized={netOn("START-LATCH") || netOn("SEAL-IN")} />
           <SchematicCoil reference="K1" label="Relay coil" x={760} y={170} energized={isEnergized("K1")} selected={isSelected("K1")} onSelect={() => select("K1")} />
           <SchematicWire d="M820 170 H948" energized={isEnergized("K1")} />
 
-          <SchematicWire d="M414 170 V258 H466" energized={netOn("SEAL-IN")} />
-          <SchematicContact reference="K1.13" label="Seal-in NO" x={466} y={258} closed={isClosed("K1.13")} selected={isSelected("K1.13")} onSelect={() => select("K1.13")} />
-          <SchematicWire d="M516 258 H610 V170" energized={netOn("SEAL-IN")} />
+          <SchematicWire d="M520 170 V258 H568" energized={netOn("INTERLOCK-CHAIN")} />
+          <SchematicContact reference="K1.13" label="Seal-in NO" x={568} y={258} closed={isClosed("K1.13")} selected={isSelected("K1.13")} onSelect={() => select("K1.13")} />
+          <SchematicWire d="M618 258 H688 V170" energized={netOn("SEAL-IN")} />
 
           <SchematicWire d="M72 354 H326" energized={isEnergized("K1")} />
           <SchematicContact reference="K1" label="K1 enabled" x={326} y={354} closed={isEnergized("K1")} selected={isSelected("K1")} onSelect={() => select("K1")} />
@@ -798,7 +808,7 @@ function SchematicWorkspace({
             <text x="86" y="599">Energized path</text>
             <circle cx="232" cy="594" r="6" className="legend-open" />
             <text x="246" y="599">Open or idle path</text>
-            <text x="700" y="599">START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
+            <text x="648" y="599">START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
           </g>
         </svg>
       </div>
@@ -1499,6 +1509,15 @@ function SimulationStrip({
           <Square size={14} />
           STOP
         </button>
+        <button
+          type="button"
+          className={inputs.limitClosed ? "is-active" : ""}
+          aria-pressed={inputs.limitClosed}
+          onClick={() => onInputsChange({ ...inputs, limitClosed: !inputs.limitClosed })}
+        >
+          <ShieldCheck size={14} />
+          LIMIT
+        </button>
         <button type="button" onClick={onStep}>
           <StepForward size={16} />
           Step
@@ -1514,6 +1533,7 @@ function SimulationStrip({
       <div className="strip-readings">
         <span>START {inputs.startPressed ? "closed" : "open"}</span>
         <span>STOP {inputs.stopPressed ? "open" : "closed"}</span>
+        <span>LIMIT {inputs.limitClosed ? "closed" : "open"}</span>
         <span>Timer {snapshot ? `${snapshot.timerElapsedMs} ms` : "idle"}</span>
         {(snapshot?.readings ?? []).slice(0, 3).map((reading) => (
           <span key={reading.id}>{reading.label}: {reading.voltageVac.toFixed(0)} VAC / {reading.currentA.toFixed(2)} A</span>

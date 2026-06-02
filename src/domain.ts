@@ -123,6 +123,7 @@ export interface ValidationFinding {
 export interface SimulationInputs {
   startPressed: boolean;
   stopPressed: boolean;
+  limitClosed: boolean;
 }
 
 export interface SimulationSnapshot {
@@ -463,9 +464,10 @@ export function createStarterProject(): CircuitProject {
         { id: "c-qf1", definitionId: "mccb-2p-240", reference: "QF1", x: 60, y: 120, state: "closed" },
         { id: "c-fu1", definitionId: "control-fuse-2a", reference: "FU1", x: 165, y: 120, state: "closed" },
         { id: "c-sb0", definitionId: "pb-stop-nc", reference: "SB0", x: 270, y: 120, state: "closed" },
-        { id: "c-sb1", definitionId: "pb-start-no", reference: "SB1", x: 375, y: 120, state: "closed" },
-        { id: "c-k1", definitionId: "relay-coil-24vac", reference: "K1", x: 540, y: 120, state: "energized" },
-        { id: "c-k1a", definitionId: "relay-contact-no", reference: "K1.13", x: 375, y: 220, state: "closed" },
+        { id: "c-ls1", definitionId: "limit-switch-nc", reference: "LS1", x: 375, y: 120, state: "closed" },
+        { id: "c-sb1", definitionId: "pb-start-no", reference: "SB1", x: 480, y: 120, state: "closed" },
+        { id: "c-k1", definitionId: "relay-coil-24vac", reference: "K1", x: 620, y: 120, state: "energized" },
+        { id: "c-k1a", definitionId: "relay-contact-no", reference: "K1.13", x: 480, y: 220, state: "closed" },
         { id: "c-kt1", definitionId: "timer-on-delay", reference: "KT1", x: 540, y: 250, state: "energized", settings: { delayMs: 3000 } },
         { id: "c-y0", definitionId: "plc-output-8", reference: "Y0", x: 165, y: 340, state: "energized" },
         { id: "c-hl1", definitionId: "pilot-lamp-24vac", reference: "HL1", x: 540, y: 360, state: "energized" }
@@ -473,14 +475,15 @@ export function createStarterProject(): CircuitProject {
       conductors: [
         { id: "w1", from: "c-qf1", fromTerminal: "T1", to: "c-fu1", toTerminal: "1", net: "L24" },
         { id: "w2", from: "c-fu1", fromTerminal: "2", to: "c-sb0", toTerminal: "21", net: "L24-CONTROL" },
-        { id: "w3", from: "c-sb0", fromTerminal: "22", to: "c-sb1", toTerminal: "13", net: "STOP-CHAIN" },
+        { id: "w3", from: "c-sb0", fromTerminal: "22", to: "c-ls1", toTerminal: "21", net: "STOP-CHAIN" },
         { id: "w4", from: "c-sb1", fromTerminal: "14", to: "c-k1", toTerminal: "A1", net: "START-LATCH" },
         { id: "w5", from: "c-k1a", fromTerminal: "14", to: "c-k1", toTerminal: "A1", net: "SEAL-IN" },
         { id: "w6", from: "c-k1", fromTerminal: "A2", to: "c-kt1", toTerminal: "A2", net: "N24" },
         { id: "w7", from: "c-y0", fromTerminal: "Y0", to: "c-hl1", toTerminal: "X1", net: "PLC-Y0" },
         { id: "w8", from: "c-hl1", fromTerminal: "X2", to: "c-kt1", toTerminal: "A2", net: "N24" },
         { id: "w9", from: "c-k1", fromTerminal: "A1", to: "c-kt1", toTerminal: "A1", net: "START-LATCH" },
-        { id: "w10", from: "c-sb0", fromTerminal: "22", to: "c-k1a", toTerminal: "13", net: "STOP-CHAIN" }
+        { id: "w10", from: "c-ls1", fromTerminal: "22", to: "c-k1a", toTerminal: "13", net: "INTERLOCK-CHAIN" },
+        { id: "w11", from: "c-ls1", fromTerminal: "22", to: "c-sb1", toTerminal: "13", net: "INTERLOCK-CHAIN" }
       ],
       panelPlacements: [
         { componentId: "c-qf1", rail: "control-rail", xMm: 12, yMm: 0 },
@@ -489,8 +492,9 @@ export function createStarterProject(): CircuitProject {
         { componentId: "c-kt1", rail: "control-rail", xMm: 100, yMm: 0 },
         { componentId: "c-y0", rail: "control-rail", xMm: 128, yMm: 0 },
         { componentId: "c-sb0", rail: "virtual", xMm: 0, yMm: 120 },
-        { componentId: "c-sb1", rail: "virtual", xMm: 42, yMm: 120 },
-        { componentId: "c-hl1", rail: "virtual", xMm: 84, yMm: 120 }
+        { componentId: "c-ls1", rail: "virtual", xMm: 42, yMm: 120 },
+        { componentId: "c-sb1", rail: "virtual", xMm: 84, yMm: 120 },
+        { componentId: "c-hl1", rail: "virtual", xMm: 126, yMm: 120 }
       ]
     }
   };
@@ -632,6 +636,32 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
     }
   }
 
+  const endpointsOnNet = (netId: string) =>
+    new Set((netlist.nets.find((net) => net.id === netId)?.endpoints ?? []).map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`));
+  const limitSwitch = componentByReference.get("LS1");
+  if (limitSwitch) {
+    const stopChainEndpoints = endpointsOnNet("STOP-CHAIN");
+    const interlockEndpoints = endpointsOnNet("INTERLOCK-CHAIN");
+    const limitInterlockComplete =
+      stopChainEndpoints.has("LS1:21") &&
+      interlockEndpoints.has("LS1:22") &&
+      interlockEndpoints.has("SB1:13") &&
+      interlockEndpoints.has("K1.13:13");
+
+    if (!limitInterlockComplete) {
+      findings.push({
+        id: `limit-interlock-topology-${limitSwitch.id}`,
+        severity: "error",
+        ruleId: "LIMIT_INTERLOCK_TOPOLOGY",
+        affectedObjectIds: [limitSwitch.id],
+        title: "Limit switch is not in the stop/interlock chain",
+        explanation: "LS1 must sit after STOP and before both START and the K1 seal-in contact so an opened limit switch drops the running sequence.",
+        suggestedFix: "Wire LS1:21 to STOP-CHAIN and LS1:22 to the INTERLOCK-CHAIN node feeding SB1:13 and K1.13:13."
+      });
+    }
+  }
+
+  const sealInUpstreamNets = new Set(["STOP-CHAIN", "INTERLOCK-CHAIN"]);
   for (const component of model.components) {
     const definition = findDefinition(component.definitionId);
     if (definition.kind !== "relay-contact") {
@@ -661,7 +691,7 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
       terminal: terminal.id,
       nets: netsByTerminal.get(`${component.id}:${terminal.id}`) ?? new Set<string>()
     }));
-    const upstreamTerminal = contactTerminalNets.find((entry) => entry.nets.has("STOP-CHAIN"));
+    const upstreamTerminal = contactTerminalNets.find((entry) => [...entry.nets].some((net) => sealInUpstreamNets.has(net)));
     const outputTerminal = contactTerminalNets.find(
       (entry) => entry.terminal !== upstreamTerminal?.terminal && [...entry.nets].some((net) => ownerCoilInputNets.has(net))
     );
@@ -673,8 +703,8 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
         ruleId: "SEAL_IN_PATH_TOPOLOGY",
         affectedObjectIds: [component.id, ownerComponent?.id].filter((id): id is string => Boolean(id)),
         title: "Self-holding contact is not wired across START",
-        explanation: `${component.reference} must bridge STOP-CHAIN to ${ownerReference}:${ownerCoilInput ?? "A1"} so the relay can remain energized after START is released.`,
-        suggestedFix: "Wire one side of the auxiliary contact to the STOP-CHAIN node and the other side to the owner coil input."
+        explanation: `${component.reference} must bridge INTERLOCK-CHAIN to ${ownerReference}:${ownerCoilInput ?? "A1"} so the relay can remain energized after START is released.`,
+        suggestedFix: "Wire one side of the auxiliary contact to the permissive stop/interlock node and the other side to the owner coil input."
       });
     }
   }
@@ -925,9 +955,9 @@ export function analyzeElectricalPaths(model: CircuitModel, snapshot?: Simulatio
     makeBranch({
       id: "control-seal-in",
       label: "Control seal-in branch",
-      description: "STOP/START and K1 auxiliary contact feed the K1 relay coil and KT1 timer coil.",
-      path: ["QF1", "FU1", "SB0", "SB1", "K1.13", "K1", "KT1"],
-      contactReferences: ["SB0", "SB1", "K1.13"],
+      description: "STOP, LS1, START, and K1 auxiliary contact feed the K1 relay coil and KT1 timer coil.",
+      path: ["QF1", "FU1", "SB0", "LS1", "SB1", "K1.13", "K1", "KT1"],
+      contactReferences: ["SB0", "LS1", "SB1", "K1.13"],
       loadReferences: ["K1", "KT1"],
       activeNet: "START-LATCH"
     }),
@@ -1007,9 +1037,12 @@ export function simulateStep(
   const hasHardFault = findings.some((finding) => finding.severity === "error");
   const inputs: SimulationInputs = {
     startPressed: inputPatch.startPressed ?? previous?.inputs.startPressed ?? true,
-    stopPressed: inputPatch.stopPressed ?? previous?.inputs.stopPressed ?? false
+    stopPressed: inputPatch.stopPressed ?? previous?.inputs.stopPressed ?? false,
+    limitClosed: inputPatch.limitClosed ?? previous?.inputs.limitClosed ?? true
   };
-  const stopChainClosed = !inputs.stopPressed;
+  const stopButtonClosed = !inputs.stopPressed;
+  const limitClosed = inputs.limitClosed;
+  const stopChainClosed = stopButtonClosed && limitClosed;
   const startContactClosed = inputs.startPressed;
   const previousRelayEnergized = Object.entries(previous?.componentStates ?? {}).some(([componentId, state]) => {
     const component = model.components.find((item) => item.id === componentId);
@@ -1026,7 +1059,8 @@ export function simulateStep(
     : [
         "L24",
         "L24-CONTROL",
-        ...(stopChainClosed ? ["STOP-CHAIN"] : []),
+        ...(stopButtonClosed ? ["STOP-CHAIN"] : []),
+        ...(stopChainClosed ? ["INTERLOCK-CHAIN"] : []),
         ...(relayEnergized ? ["START-LATCH", "SEAL-IN"] : []),
         ...(timerDone ? ["TIMER-DONE"] : []),
         ...(plcOutputEnergized ? ["PLC-Y0"] : [])
@@ -1041,7 +1075,9 @@ export function simulateStep(
     }
 
     if (component.reference === "SB0") {
-      componentStates[component.id] = stopChainClosed ? "closed" : "open";
+      componentStates[component.id] = stopButtonClosed ? "closed" : "open";
+    } else if (component.reference === "LS1") {
+      componentStates[component.id] = limitClosed ? "closed" : "open";
     } else if (component.reference === "SB1") {
       componentStates[component.id] = startContactClosed ? "closed" : "open";
     } else if (component.reference === "K1" || definition.kind === "contactor") {
@@ -1118,6 +1154,7 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
   }
 
   const stop = getComponentByReference(model, "SB0");
+  const limit = getComponentByReference(model, "LS1");
   const start = getComponentByReference(model, "SB1");
   const seal = getComponentByReference(model, "K1.13");
   const relay = getComponentByReference(model, "K1");
@@ -1129,6 +1166,11 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
     label: "Stop PB",
     contactType: "NC",
     address: "%I0.1"
+  });
+  const limitElement = toElement(limit, "LS1", "contact", snapshot, {
+    label: "Limit interlock",
+    contactType: "NC",
+    address: "%I0.2"
   });
   const startElement = toElement(start, "SB1", "contact", snapshot, {
     label: "Start PB",
@@ -1157,7 +1199,7 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
     address: "%Q0.0"
   });
 
-  const controlRungEnergized = stopElement.energized && (startElement.energized || sealElement.energized) && relayElement.energized;
+  const controlRungEnergized = stopElement.energized && limitElement.energized && (startElement.energized || sealElement.energized) && relayElement.energized;
   const timerRungEnergized = relayElement.energized && timerElement.energized;
   const plcRungEnergized = relayElement.energized && timerElement.energized && (plcElement.energized || pilotElement.energized);
 
@@ -1170,8 +1212,8 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
       {
         id: "rung-start-latch",
         label: "Rung 001 - Start/stop seal-in",
-        description: "NC stop and NO start contact energize K1; K1 auxiliary contact seals the branch.",
-        inputs: [stopElement, startElement],
+        description: "NC stop, NC limit interlock, and NO start contact energize K1; K1 auxiliary contact seals the branch.",
+        inputs: [stopElement, limitElement, startElement],
         sealIn: sealElement,
         output: relayElement,
         energized: controlRungEnergized
