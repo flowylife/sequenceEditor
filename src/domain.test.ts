@@ -50,6 +50,20 @@ describe("electrical sequence domain", () => {
     expect(validateCircuit(project.model).some((finding) => finding.ruleId === "LIMIT_INTERLOCK_TOPOLOGY")).toBe(false);
   });
 
+  it("models OL1 as a normally-closed overload interlock before the relay coil", () => {
+    const project = createStarterProject();
+    const netlist = buildNetlist(project.model);
+    const runCommand = netlist.nets.find((net) => net.id === "RUN-COMMAND");
+    const startLatch = netlist.nets.find((net) => net.id === "START-LATCH");
+
+    expect(project.model.components.map((component) => component.reference)).toContain("OL1");
+    expect(runCommand?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toEqual(expect.arrayContaining(["SB1:14", "OL1:95"]));
+    expect(startLatch?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toEqual(
+      expect.arrayContaining(["OL1:96", "K1:A1", "KT1:A1"])
+    );
+    expect(validateCircuit(project.model).some((finding) => finding.ruleId === "OVERLOAD_INTERLOCK_TOPOLOGY")).toBe(false);
+  });
+
   it("simulates relay seal-in before the timer output is ready", () => {
     const project = createStarterProject();
     const snapshot = simulateStep(project.model, undefined, { startPressed: true });
@@ -137,6 +151,26 @@ describe("electrical sequence domain", () => {
     expect(tripped.energizedNets).not.toContain("START-LATCH");
   });
 
+  it("trips OL1 and drops the sealed relay and downstream outputs", () => {
+    const project = createStarterProject();
+    const running = simulateStep(project.model, undefined, { startPressed: true, overloadHealthy: true });
+    const tripped = simulateStep(project.model, running, {
+      startPressed: false,
+      stopPressed: false,
+      limitClosed: true,
+      overloadHealthy: false
+    });
+
+    expect(tripped.componentStates["c-ol1"]).toBe("open");
+    expect(tripped.componentStates["c-k1"]).toBe("idle");
+    expect(tripped.componentStates["c-kt1"]).toBe("idle");
+    expect(tripped.componentStates["c-y0"]).toBe("idle");
+    expect(tripped.timerElapsedMs).toBe(0);
+    expect(tripped.energizedNets).not.toContain("RUN-COMMAND");
+    expect(tripped.energizedNets).not.toContain("START-LATCH");
+    expect(tripped.readings.find((reading) => reading.id === "r-k1")?.voltageVac).toBe(0);
+  });
+
   it("projects sequence circuit behavior into IEC ladder rungs", () => {
     const project = createStarterProject();
     let snapshot = simulateStep(project.model, undefined, { startPressed: true });
@@ -148,7 +182,7 @@ describe("electrical sequence domain", () => {
     expect(logicModel.standard).toBe("IEC_61131_3_LD");
     expect(logicModel.rungs).toHaveLength(3);
     expect(logicModel.rungs[0].label).toContain("Start/stop");
-    expect(logicModel.rungs[0].inputs.map((input) => input.reference)).toEqual(["SB0", "LS1", "SB1"]);
+    expect(logicModel.rungs[0].inputs.map((input) => input.reference)).toEqual(["SB0", "LS1", "SB1", "OL1"]);
     expect(logicModel.rungs[0].sealIn?.reference).toBe("K1.13");
     expect(logicModel.rungs[2].output.reference).toBe("Y0");
     expect(logicModel.rungs.every((rung) => rung.energized)).toBe(true);
@@ -221,12 +255,20 @@ describe("electrical sequence domain", () => {
     expect(netlist.source).toBe("semantic-circuit-conductors");
     expect(startLatch?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("K1:A1");
     expect(startLatch?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("KT1:A1");
-    expect(startLatch?.conductorIds).toEqual(["w4", "w9"]);
+    expect(startLatch?.conductorIds).toEqual(["w12", "w9"]);
   });
 
   it("warns when one terminal is assigned to multiple net labels", () => {
     const project = createStarterProject();
-    const findings = validateCircuit(project.model);
+    const conflicting = addConductor(project.model, {
+      fromComponentId: "c-k1",
+      fromTerminal: "A1",
+      toComponentId: "c-hl1",
+      toTerminal: "X1",
+      net: "FIELD-RUN"
+    });
+
+    const findings = validateCircuit(conflicting);
 
     expect(findings.some((finding) => finding.ruleId === "TERMINAL_NET_CONSISTENCY")).toBe(true);
   });
@@ -278,6 +320,15 @@ describe("electrical sequence domain", () => {
     expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "LIMIT_INTERLOCK_TOPOLOGY")).toBe(true);
   });
 
+  it("flags an overload contact that is missing from the run command path", () => {
+    const project = createStarterProject();
+    const brokenOverload = removeConductor(project.model, "w12");
+
+    const findings = validateCircuit(brokenOverload);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "OVERLOAD_INTERLOCK_TOPOLOGY")).toBe(true);
+  });
+
   it("checks simple DIN rail mechanical clearance", () => {
     const project = createStarterProject();
     const findings = validatePanelFit(project.model);
@@ -298,6 +349,7 @@ describe("electrical sequence domain", () => {
     expect(controlBranch?.liveCurrentA).toBeCloseTo(0.54, 2);
     expect(controlBranch?.weakestContactRatingA).toBe(3);
     expect(controlBranch?.path).toContain("LS1");
+    expect(controlBranch?.path).toContain("OL1");
   });
 
   it("turns insufficient contact rating into a validation finding", () => {

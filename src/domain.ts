@@ -124,6 +124,7 @@ export interface SimulationInputs {
   startPressed: boolean;
   stopPressed: boolean;
   limitClosed: boolean;
+  overloadHealthy: boolean;
 }
 
 export interface SimulationSnapshot {
@@ -389,6 +390,19 @@ export const componentCatalog: ComponentDefinition[] = [
     description: "Machine limit switch for permissive or interlock chains."
   },
   {
+    id: "thermal-overload-nc",
+    name: "Thermal Overload NC Contact",
+    kind: "protective",
+    symbol: "OL",
+    terminals: [
+      { id: "95", label: "95", role: "contact" },
+      { id: "96", label: "96", role: "contact" }
+    ],
+    ratings: { ratedVoltageVac: 240, contactCurrentA: 3 },
+    mechanical: { widthMm: 45, heightMm: 82, depthMm: 70, mount: "din-rail", clearanceMm: 8 },
+    description: "Normally-closed overload trip contact in the relay coil permissive chain."
+  },
+  {
     id: "plc-input-8",
     name: "PLC DI 8 Channel",
     kind: "plc-input",
@@ -466,6 +480,7 @@ export function createStarterProject(): CircuitProject {
         { id: "c-sb0", definitionId: "pb-stop-nc", reference: "SB0", x: 270, y: 120, state: "closed" },
         { id: "c-ls1", definitionId: "limit-switch-nc", reference: "LS1", x: 375, y: 120, state: "closed" },
         { id: "c-sb1", definitionId: "pb-start-no", reference: "SB1", x: 480, y: 120, state: "closed" },
+        { id: "c-ol1", definitionId: "thermal-overload-nc", reference: "OL1", x: 560, y: 120, state: "closed" },
         { id: "c-k1", definitionId: "relay-coil-24vac", reference: "K1", x: 620, y: 120, state: "energized" },
         { id: "c-k1a", definitionId: "relay-contact-no", reference: "K1.13", x: 480, y: 220, state: "closed" },
         { id: "c-kt1", definitionId: "timer-on-delay", reference: "KT1", x: 540, y: 250, state: "energized", settings: { delayMs: 3000 } },
@@ -476,14 +491,15 @@ export function createStarterProject(): CircuitProject {
         { id: "w1", from: "c-qf1", fromTerminal: "T1", to: "c-fu1", toTerminal: "1", net: "L24" },
         { id: "w2", from: "c-fu1", fromTerminal: "2", to: "c-sb0", toTerminal: "21", net: "L24-CONTROL" },
         { id: "w3", from: "c-sb0", fromTerminal: "22", to: "c-ls1", toTerminal: "21", net: "STOP-CHAIN" },
-        { id: "w4", from: "c-sb1", fromTerminal: "14", to: "c-k1", toTerminal: "A1", net: "START-LATCH" },
-        { id: "w5", from: "c-k1a", fromTerminal: "14", to: "c-k1", toTerminal: "A1", net: "SEAL-IN" },
+        { id: "w4", from: "c-sb1", fromTerminal: "14", to: "c-ol1", toTerminal: "95", net: "RUN-COMMAND" },
+        { id: "w5", from: "c-k1a", fromTerminal: "14", to: "c-ol1", toTerminal: "95", net: "RUN-COMMAND" },
         { id: "w6", from: "c-k1", fromTerminal: "A2", to: "c-kt1", toTerminal: "A2", net: "N24" },
         { id: "w7", from: "c-y0", fromTerminal: "Y0", to: "c-hl1", toTerminal: "X1", net: "PLC-Y0" },
         { id: "w8", from: "c-hl1", fromTerminal: "X2", to: "c-kt1", toTerminal: "A2", net: "N24" },
         { id: "w9", from: "c-k1", fromTerminal: "A1", to: "c-kt1", toTerminal: "A1", net: "START-LATCH" },
         { id: "w10", from: "c-ls1", fromTerminal: "22", to: "c-k1a", toTerminal: "13", net: "INTERLOCK-CHAIN" },
-        { id: "w11", from: "c-ls1", fromTerminal: "22", to: "c-sb1", toTerminal: "13", net: "INTERLOCK-CHAIN" }
+        { id: "w11", from: "c-ls1", fromTerminal: "22", to: "c-sb1", toTerminal: "13", net: "INTERLOCK-CHAIN" },
+        { id: "w12", from: "c-ol1", fromTerminal: "96", to: "c-k1", toTerminal: "A1", net: "START-LATCH" }
       ],
       panelPlacements: [
         { componentId: "c-qf1", rail: "control-rail", xMm: 12, yMm: 0 },
@@ -491,6 +507,7 @@ export function createStarterProject(): CircuitProject {
         { componentId: "c-k1", rail: "control-rail", xMm: 84, yMm: 0 },
         { componentId: "c-kt1", rail: "control-rail", xMm: 100, yMm: 0 },
         { componentId: "c-y0", rail: "control-rail", xMm: 128, yMm: 0 },
+        { componentId: "c-ol1", rail: "control-rail", xMm: 188, yMm: 0 },
         { componentId: "c-sb0", rail: "virtual", xMm: 0, yMm: 120 },
         { componentId: "c-ls1", rail: "virtual", xMm: 42, yMm: 120 },
         { componentId: "c-sb1", rail: "virtual", xMm: 84, yMm: 120 },
@@ -661,7 +678,31 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
     }
   }
 
+  const overloadContact = componentByReference.get("OL1");
+  if (overloadContact) {
+    const runCommandEndpoints = endpointsOnNet("RUN-COMMAND");
+    const startLatchEndpoints = endpointsOnNet("START-LATCH");
+    const overloadInterlockComplete =
+      runCommandEndpoints.has("OL1:95") &&
+      startLatchEndpoints.has("OL1:96") &&
+      startLatchEndpoints.has("K1:A1") &&
+      startLatchEndpoints.has("KT1:A1");
+
+    if (!overloadInterlockComplete) {
+      findings.push({
+        id: `overload-interlock-topology-${overloadContact.id}`,
+        severity: "error",
+        ruleId: "OVERLOAD_INTERLOCK_TOPOLOGY",
+        affectedObjectIds: [overloadContact.id],
+        title: "Overload contact is not in the relay coil chain",
+        explanation: "OL1 must sit between the RUN-COMMAND node and K1/KT1 coil inputs so an overload trip removes coil voltage.",
+        suggestedFix: "Wire OL1:95 to RUN-COMMAND and OL1:96 to the START-LATCH node feeding K1:A1 and KT1:A1."
+      });
+    }
+  }
+
   const sealInUpstreamNets = new Set(["STOP-CHAIN", "INTERLOCK-CHAIN"]);
+  const sealInOutputNets = new Set(["RUN-COMMAND", "START-LATCH"]);
   for (const component of model.components) {
     const definition = findDefinition(component.definitionId);
     if (definition.kind !== "relay-contact") {
@@ -693,7 +734,9 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
     }));
     const upstreamTerminal = contactTerminalNets.find((entry) => [...entry.nets].some((net) => sealInUpstreamNets.has(net)));
     const outputTerminal = contactTerminalNets.find(
-      (entry) => entry.terminal !== upstreamTerminal?.terminal && [...entry.nets].some((net) => ownerCoilInputNets.has(net))
+      (entry) =>
+        entry.terminal !== upstreamTerminal?.terminal &&
+        [...entry.nets].some((net) => ownerCoilInputNets.has(net) || sealInOutputNets.has(net))
     );
 
     if (!upstreamTerminal || !outputTerminal) {
@@ -703,8 +746,8 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
         ruleId: "SEAL_IN_PATH_TOPOLOGY",
         affectedObjectIds: [component.id, ownerComponent?.id].filter((id): id is string => Boolean(id)),
         title: "Self-holding contact is not wired across START",
-        explanation: `${component.reference} must bridge INTERLOCK-CHAIN to ${ownerReference}:${ownerCoilInput ?? "A1"} so the relay can remain energized after START is released.`,
-        suggestedFix: "Wire one side of the auxiliary contact to the permissive stop/interlock node and the other side to the owner coil input."
+        explanation: `${component.reference} must bridge INTERLOCK-CHAIN to RUN-COMMAND so the relay can remain energized after START is released.`,
+        suggestedFix: "Wire one side of the auxiliary contact to the permissive stop/interlock node and the other side to the RUN-COMMAND node before OL1."
       });
     }
   }
@@ -955,9 +998,9 @@ export function analyzeElectricalPaths(model: CircuitModel, snapshot?: Simulatio
     makeBranch({
       id: "control-seal-in",
       label: "Control seal-in branch",
-      description: "STOP, LS1, START, and K1 auxiliary contact feed the K1 relay coil and KT1 timer coil.",
-      path: ["QF1", "FU1", "SB0", "LS1", "SB1", "K1.13", "K1", "KT1"],
-      contactReferences: ["SB0", "LS1", "SB1", "K1.13"],
+      description: "STOP, LS1, START, K1 auxiliary contact, and OL1 feed the K1 relay coil and KT1 timer coil.",
+      path: ["QF1", "FU1", "SB0", "LS1", "SB1", "K1.13", "OL1", "K1", "KT1"],
+      contactReferences: ["SB0", "LS1", "SB1", "K1.13", "OL1"],
       loadReferences: ["K1", "KT1"],
       activeNet: "START-LATCH"
     }),
@@ -1038,17 +1081,21 @@ export function simulateStep(
   const inputs: SimulationInputs = {
     startPressed: inputPatch.startPressed ?? previous?.inputs.startPressed ?? true,
     stopPressed: inputPatch.stopPressed ?? previous?.inputs.stopPressed ?? false,
-    limitClosed: inputPatch.limitClosed ?? previous?.inputs.limitClosed ?? true
+    limitClosed: inputPatch.limitClosed ?? previous?.inputs.limitClosed ?? true,
+    overloadHealthy: inputPatch.overloadHealthy ?? previous?.inputs.overloadHealthy ?? true
   };
   const stopButtonClosed = !inputs.stopPressed;
   const limitClosed = inputs.limitClosed;
+  const overloadClosed = inputs.overloadHealthy;
   const stopChainClosed = stopButtonClosed && limitClosed;
   const startContactClosed = inputs.startPressed;
   const previousRelayEnergized = Object.entries(previous?.componentStates ?? {}).some(([componentId, state]) => {
     const component = model.components.find((item) => item.id === componentId);
     return component?.reference === "K1" && state === "energized";
   });
-  const relayEnergized = !hasHardFault && stopChainClosed && (startContactClosed || previousRelayEnergized);
+  const commandContactClosed = startContactClosed || (previousRelayEnergized && overloadClosed);
+  const runCommandEnergized = !hasHardFault && stopChainClosed && commandContactClosed;
+  const relayEnergized = runCommandEnergized && overloadClosed;
   const timer = getComponentByReference(model, "KT1");
   const timerDelayMs = Number(timer?.settings?.delayMs ?? 3000);
   const timerElapsedMs = relayEnergized ? Math.min(timerDelayMs, (previous?.timerElapsedMs ?? 0) + 250) : 0;
@@ -1061,7 +1108,8 @@ export function simulateStep(
         "L24-CONTROL",
         ...(stopButtonClosed ? ["STOP-CHAIN"] : []),
         ...(stopChainClosed ? ["INTERLOCK-CHAIN"] : []),
-        ...(relayEnergized ? ["START-LATCH", "SEAL-IN"] : []),
+        ...(runCommandEnergized ? ["RUN-COMMAND"] : []),
+        ...(relayEnergized ? ["START-LATCH"] : []),
         ...(timerDone ? ["TIMER-DONE"] : []),
         ...(plcOutputEnergized ? ["PLC-Y0"] : [])
       ];
@@ -1078,6 +1126,8 @@ export function simulateStep(
       componentStates[component.id] = stopButtonClosed ? "closed" : "open";
     } else if (component.reference === "LS1") {
       componentStates[component.id] = limitClosed ? "closed" : "open";
+    } else if (component.reference === "OL1") {
+      componentStates[component.id] = overloadClosed ? "closed" : "open";
     } else if (component.reference === "SB1") {
       componentStates[component.id] = startContactClosed ? "closed" : "open";
     } else if (component.reference === "K1" || definition.kind === "contactor") {
@@ -1156,6 +1206,7 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
   const stop = getComponentByReference(model, "SB0");
   const limit = getComponentByReference(model, "LS1");
   const start = getComponentByReference(model, "SB1");
+  const overload = getComponentByReference(model, "OL1");
   const seal = getComponentByReference(model, "K1.13");
   const relay = getComponentByReference(model, "K1");
   const timer = getComponentByReference(model, "KT1");
@@ -1176,6 +1227,11 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
     label: "Start PB",
     contactType: "NO",
     address: "%I0.0"
+  });
+  const overloadElement = toElement(overload, "OL1", "contact", snapshot, {
+    label: "Overload trip",
+    contactType: "NC",
+    address: "%I0.3"
   });
   const sealElement = toElement(seal, "K1.13", "contact", snapshot, {
     label: "K1 seal-in",
@@ -1199,7 +1255,8 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
     address: "%Q0.0"
   });
 
-  const controlRungEnergized = stopElement.energized && limitElement.energized && (startElement.energized || sealElement.energized) && relayElement.energized;
+  const controlRungEnergized =
+    stopElement.energized && limitElement.energized && (startElement.energized || sealElement.energized) && overloadElement.energized && relayElement.energized;
   const timerRungEnergized = relayElement.energized && timerElement.energized;
   const plcRungEnergized = relayElement.energized && timerElement.energized && (plcElement.energized || pilotElement.energized);
 
@@ -1212,8 +1269,8 @@ export function buildLogicModel(model: CircuitModel, snapshot?: SimulationSnapsh
       {
         id: "rung-start-latch",
         label: "Rung 001 - Start/stop seal-in",
-        description: "NC stop, NC limit interlock, and NO start contact energize K1; K1 auxiliary contact seals the branch.",
-        inputs: [stopElement, limitElement, startElement],
+        description: "NC stop, NC limit interlock, NO start contact, and NC overload contact energize K1; K1 auxiliary contact seals the branch.",
+        inputs: [stopElement, limitElement, startElement, overloadElement],
         sealIn: sealElement,
         output: relayElement,
         energized: controlRungEnergized

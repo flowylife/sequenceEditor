@@ -42,6 +42,7 @@ describe("Sequence Editor app", () => {
     expect(screen.getAllByText("N24").length).toBeGreaterThan(0);
     expect(screen.getByLabelText(/SB1 START NO/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/LS1 LIMIT NC/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/OL1 OVERLOAD NC/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/K1 Relay coil/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Show graph CAD view/i })).toBeInTheDocument();
   });
@@ -165,6 +166,30 @@ describe("Sequence Editor app", () => {
     expect(screen.getAllByText(/PLC Y0: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
   });
 
+  it("lets the operator trip OL1 and de-energizes the run command", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^START$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 1 running/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("OVERLOAD healthy")).toBeInTheDocument();
+    expect(screen.getAllByText(/K1 coil: 24 VAC \/ 0.25 A/i).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /^OVERLOAD$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 2 running/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("OVERLOAD tripped")).toBeInTheDocument();
+    expect(screen.getAllByText(/K1 coil: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/PLC Y0: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
+  });
+
   it("saves the current project revision through the API", async () => {
     const apiProject = {
       id: "project-seq-001",
@@ -207,6 +232,7 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText(/Rung 001 - Start\/stop seal-in/i)).toBeInTheDocument();
     expect(screen.getByText("SB0")).toBeInTheDocument();
     expect(screen.getByText("LS1")).toBeInTheDocument();
+    expect(screen.getByText("OL1")).toBeInTheDocument();
     expect(screen.getByText("K1.13")).toBeInTheDocument();
     expect(screen.getByText("Y0")).toBeInTheDocument();
   });
@@ -290,7 +316,7 @@ describe("Sequence Editor app", () => {
 
     expect(screen.getByText("SEAL_IN_PATH_TOPOLOGY")).toBeInTheDocument();
     expect(screen.getByText(/Self-holding contact is not wired across START/i)).toBeInTheDocument();
-    expect(screen.getByText(/K1\.13 must bridge INTERLOCK-CHAIN to K1:A1/i)).toBeInTheDocument();
+    expect(screen.getByText(/K1\.13 must bridge INTERLOCK-CHAIN to RUN-COMMAND/i)).toBeInTheDocument();
   });
 
   it("lets the operator tune KT1 delay and simulates timer done from that setting", async () => {

@@ -88,7 +88,8 @@ const railLabels: Record<string, string> = {
 const initialSimulationInputs: SimulationInputs = {
   startPressed: true,
   stopPressed: false,
-  limitClosed: true
+  limitClosed: true,
+  overloadHealthy: true
 };
 
 function getDefaultSelectedComponentId(model: CircuitModel) {
@@ -166,6 +167,7 @@ const signalRows = [
   { key: "start", label: "SB1 START" },
   { key: "stop", label: "SB0 STOP" },
   { key: "limit", label: "LS1 LIMIT" },
+  { key: "overload", label: "OL1 OVERLOAD" },
   { key: "k1", label: "K1 Coil" },
   { key: "seal", label: "K1 13-14" },
   { key: "timer", label: "KT1 TON" },
@@ -181,6 +183,8 @@ function signalActive(snapshot: SimulationSnapshot, key: (typeof signalRows)[num
       return !snapshot.inputs.stopPressed;
     case "limit":
       return snapshot.inputs.limitClosed;
+    case "overload":
+      return snapshot.inputs.overloadHealthy;
     case "k1":
       return Object.entries(snapshot.componentStates).some(([componentId, state]) => componentId === "c-k1" && state === "energized");
     case "seal":
@@ -340,7 +344,7 @@ function App() {
   const resetSimulation = () => {
     setSnapshot(undefined);
     setSimulationHistory([]);
-    setSimulationInputs({ startPressed: false, stopPressed: false, limitClosed: true });
+    setSimulationInputs({ startPressed: false, stopPressed: false, limitClosed: true, overloadHealthy: true });
     setInspectorTab("simulation");
   };
 
@@ -781,13 +785,15 @@ function SchematicWorkspace({
           <SchematicContact reference="LS1" label="LIMIT NC" x={438} y={170} normallyClosed closed={isClosed("LS1")} selected={isSelected("LS1")} onSelect={() => select("LS1")} />
           <SchematicWire d="M488 170 H568" energized={netOn("INTERLOCK-CHAIN")} />
           <SchematicContact reference="SB1" label="START NO" x={568} y={170} closed={isClosed("SB1")} selected={isSelected("SB1")} onSelect={() => select("SB1")} />
-          <SchematicWire d="M618 170 H760" energized={netOn("START-LATCH") || netOn("SEAL-IN")} />
-          <SchematicCoil reference="K1" label="Relay coil" x={760} y={170} energized={isEnergized("K1")} selected={isSelected("K1")} onSelect={() => select("K1")} />
-          <SchematicWire d="M820 170 H948" energized={isEnergized("K1")} />
+          <SchematicWire d="M618 170 H690" energized={netOn("RUN-COMMAND")} />
+          <SchematicContact reference="OL1" label="OVERLOAD NC" x={690} y={170} normallyClosed closed={isClosed("OL1")} selected={isSelected("OL1")} onSelect={() => select("OL1")} />
+          <SchematicWire d="M740 170 H800" energized={netOn("START-LATCH")} />
+          <SchematicCoil reference="K1" label="Relay coil" x={800} y={170} energized={isEnergized("K1")} selected={isSelected("K1")} onSelect={() => select("K1")} />
+          <SchematicWire d="M860 170 H948" energized={isEnergized("K1")} />
 
           <SchematicWire d="M520 170 V258 H568" energized={netOn("INTERLOCK-CHAIN")} />
           <SchematicContact reference="K1.13" label="Seal-in NO" x={568} y={258} closed={isClosed("K1.13")} selected={isSelected("K1.13")} onSelect={() => select("K1.13")} />
-          <SchematicWire d="M618 258 H688 V170" energized={netOn("SEAL-IN")} />
+          <SchematicWire d="M618 258 H654 V170 H690" energized={netOn("RUN-COMMAND")} />
 
           <SchematicWire d="M72 354 H326" energized={isEnergized("K1")} />
           <SchematicContact reference="K1" label="K1 enabled" x={326} y={354} closed={isEnergized("K1")} selected={isSelected("K1")} onSelect={() => select("K1")} />
@@ -808,7 +814,7 @@ function SchematicWorkspace({
             <text x="86" y="599">Energized path</text>
             <circle cx="232" cy="594" r="6" className="legend-open" />
             <text x="246" y="599">Open or idle path</text>
-            <text x="648" y="599">START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
+            <text x="578" y="599">START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · OVERLOAD {snapshot?.inputs.overloadHealthy ? "healthy" : "tripped"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
           </g>
         </svg>
       </div>
@@ -1518,6 +1524,15 @@ function SimulationStrip({
           <ShieldCheck size={14} />
           LIMIT
         </button>
+        <button
+          type="button"
+          className={inputs.overloadHealthy ? "is-active" : "stop-button is-active"}
+          aria-pressed={!inputs.overloadHealthy}
+          onClick={() => onInputsChange({ ...inputs, overloadHealthy: !inputs.overloadHealthy })}
+        >
+          <AlertTriangle size={14} />
+          OVERLOAD
+        </button>
         <button type="button" onClick={onStep}>
           <StepForward size={16} />
           Step
@@ -1534,6 +1549,7 @@ function SimulationStrip({
         <span>START {inputs.startPressed ? "closed" : "open"}</span>
         <span>STOP {inputs.stopPressed ? "open" : "closed"}</span>
         <span>LIMIT {inputs.limitClosed ? "closed" : "open"}</span>
+        <span>OVERLOAD {inputs.overloadHealthy ? "healthy" : "tripped"}</span>
         <span>Timer {snapshot ? `${snapshot.timerElapsedMs} ms` : "idle"}</span>
         {(snapshot?.readings ?? []).slice(0, 3).map((reading) => (
           <span key={reading.id}>{reading.label}: {reading.voltageVac.toFixed(0)} VAC / {reading.currentA.toFixed(2)} A</span>
