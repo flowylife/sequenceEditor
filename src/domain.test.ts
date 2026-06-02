@@ -172,6 +172,24 @@ describe("electrical sequence domain", () => {
     expect(tripped.readings.find((reading) => reading.id === "r-k1")?.voltageVac).toBe(0);
   });
 
+  it("opens FU1 and removes protected control voltage from the sequence", () => {
+    const project = createStarterProject();
+    const opened = simulateStep(project.model, undefined, {
+      startPressed: true,
+      controlFuseHealthy: false
+    });
+
+    expect(opened.inputs.controlFuseHealthy).toBe(false);
+    expect(opened.componentStates["c-fu1"]).toBe("open");
+    expect(opened.componentStates["c-k1"]).toBe("idle");
+    expect(opened.componentStates["c-kt1"]).toBe("idle");
+    expect(opened.componentStates["c-y0"]).toBe("idle");
+    expect(opened.energizedNets).toEqual(["L24"]);
+    expect(opened.blockingReason).toBe("Blocked by FU1 control fuse open");
+    expect(opened.readings.find((reading) => reading.id === "r-control")?.voltageVac).toBe(0);
+    expect(opened.readings.find((reading) => reading.id === "r-k1")?.currentA).toBe(0);
+  });
+
   it("reports the open permissive device that blocks the K1 run chain", () => {
     const project = createStarterProject();
     const stopped = simulateStep(project.model, undefined, { startPressed: true, stopPressed: true });

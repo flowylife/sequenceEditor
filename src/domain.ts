@@ -134,6 +134,7 @@ export interface SimulationInputs {
   stopPressed: boolean;
   limitClosed: boolean;
   overloadHealthy: boolean;
+  controlFuseHealthy: boolean;
 }
 
 export interface SimulationSnapshot {
@@ -1173,12 +1174,24 @@ export function simulateStep(
     startPressed: inputPatch.startPressed ?? previous?.inputs.startPressed ?? true,
     stopPressed: inputPatch.stopPressed ?? previous?.inputs.stopPressed ?? false,
     limitClosed: inputPatch.limitClosed ?? previous?.inputs.limitClosed ?? true,
-    overloadHealthy: inputPatch.overloadHealthy ?? previous?.inputs.overloadHealthy ?? true
+    overloadHealthy: inputPatch.overloadHealthy ?? previous?.inputs.overloadHealthy ?? true,
+    controlFuseHealthy: inputPatch.controlFuseHealthy ?? previous?.inputs.controlFuseHealthy ?? true
   };
+  const controlFuseClosed = inputs.controlFuseHealthy;
   const stopButtonClosed = !inputs.stopPressed;
   const limitClosed = inputs.limitClosed;
   const overloadClosed = inputs.overloadHealthy;
   const interlocks: SimulationInterlockStatus[] = [
+    {
+      id: "interlock-fuse",
+      componentId: getComponentByReference(model, "FU1")?.id ?? "missing-FU1",
+      reference: "FU1",
+      label: "FU1 control fuse",
+      state: controlFuseClosed ? "closed" : "open",
+      blocking: !controlFuseClosed,
+      explanation: controlFuseClosed ? "Control fuse is closed." : "Control fuse is open.",
+      blockingReason: "Blocked by FU1 control fuse open"
+    },
     {
       id: "interlock-stop",
       componentId: getComponentByReference(model, "SB0")?.id ?? "missing-SB0",
@@ -1218,14 +1231,14 @@ export function simulateStep(
     return component?.reference === "K1" && state === "energized";
   });
   const commandContactClosed = startContactClosed || (previousRelayEnergized && overloadClosed);
-  const runCommandEnergized = !hasHardFault && stopChainClosed && commandContactClosed;
+  const runCommandEnergized = !hasHardFault && controlFuseClosed && stopChainClosed && commandContactClosed;
   const relayEnergized = runCommandEnergized && overloadClosed;
   const timer = getComponentByReference(model, "KT1");
   const timerDelayMs = Number(timer?.settings?.delayMs ?? 3000);
   const timerElapsedMs = relayEnergized ? Math.min(timerDelayMs, (previous?.timerElapsedMs ?? 0) + 250) : 0;
   const timerDone = relayEnergized && timerElapsedMs >= timerDelayMs;
   const plcOutputEnergized = timerDone;
-  const energizedNets = hasHardFault
+  const energizedNets = hasHardFault || !controlFuseClosed
     ? ["L24"]
     : [
         "L24",
@@ -1246,7 +1259,9 @@ export function simulateStep(
       continue;
     }
 
-    if (component.reference === "SB0") {
+    if (component.reference === "FU1") {
+      componentStates[component.id] = controlFuseClosed ? "closed" : "open";
+    } else if (component.reference === "SB0") {
       componentStates[component.id] = stopButtonClosed ? "closed" : "open";
     } else if (component.reference === "LS1") {
       componentStates[component.id] = limitClosed ? "closed" : "open";
@@ -1273,7 +1288,8 @@ export function simulateStep(
   const lampComponent = getComponentByReference(model, "HL1");
   const relayCurrentA = relayComponent ? getComponentDesignCurrentA(relayComponent, 24) : 0;
   const lampCurrentA = lampComponent ? getComponentDesignCurrentA(lampComponent, 24) : 0;
-  const liveCurrentA = hasHardFault ? 0 : relayEnergized ? relayCurrentA + (plcOutputEnergized ? lampCurrentA : 0) : 0;
+  const liveCurrentA = hasHardFault || !controlFuseClosed ? 0 : relayEnergized ? relayCurrentA + (plcOutputEnergized ? lampCurrentA : 0) : 0;
+  const protectedControlVoltageVac = hasHardFault || !controlFuseClosed ? 0 : 24;
   return {
     step,
     timestampMs: step * 250,
@@ -1285,7 +1301,7 @@ export function simulateStep(
     blockingReason,
     componentStates,
     readings: [
-      { id: "r-control", label: "Control supply", voltageVac: 24, currentA: liveCurrentA },
+      { id: "r-control", label: "Control supply", voltageVac: protectedControlVoltageVac, currentA: liveCurrentA },
       { id: "r-k1", label: "K1 coil", voltageVac: relayEnergized ? 24 : 0, currentA: relayEnergized ? relayCurrentA : 0 },
       { id: "r-y0", label: "PLC Y0", voltageVac: plcOutputEnergized ? 24 : 0, currentA: plcOutputEnergized ? lampCurrentA : 0 }
     ]

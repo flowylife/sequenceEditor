@@ -91,7 +91,8 @@ const initialSimulationInputs: SimulationInputs = {
   startPressed: true,
   stopPressed: false,
   limitClosed: true,
-  overloadHealthy: true
+  overloadHealthy: true,
+  controlFuseHealthy: true
 };
 
 function getDefaultSelectedComponentId(model: CircuitModel) {
@@ -166,6 +167,7 @@ function getFirstTerminal(definition: ComponentDefinition, preferred: "source" |
 }
 
 const signalRows = [
+  { key: "fuse", label: "FU1 FUSE" },
   { key: "start", label: "SB1 START" },
   { key: "stop", label: "SB0 STOP" },
   { key: "limit", label: "LS1 LIMIT" },
@@ -179,6 +181,8 @@ const signalRows = [
 
 function signalActive(snapshot: SimulationSnapshot, key: (typeof signalRows)[number]["key"]) {
   switch (key) {
+    case "fuse":
+      return snapshot.inputs.controlFuseHealthy;
     case "start":
       return snapshot.inputs.startPressed;
     case "stop":
@@ -346,7 +350,7 @@ function App() {
   const resetSimulation = () => {
     setSnapshot(undefined);
     setSimulationHistory([]);
-    setSimulationInputs({ startPressed: false, stopPressed: false, limitClosed: true, overloadHealthy: true });
+    setSimulationInputs({ startPressed: false, stopPressed: false, limitClosed: true, overloadHealthy: true, controlFuseHealthy: true });
     setInspectorTab("simulation");
   };
 
@@ -824,7 +828,7 @@ function SchematicWorkspace({
             <text x="86" y="599">Energized path</text>
             <circle cx="232" cy="594" r="6" className="legend-open" />
             <text x="246" y="599">Open or idle path</text>
-            <text x="578" y="599">START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · OVERLOAD {snapshot?.inputs.overloadHealthy ? "healthy" : "tripped"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
+            <text x="578" y="599">FUSE {snapshot?.inputs.controlFuseHealthy ? "closed" : "open"} · START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · OVERLOAD {snapshot?.inputs.overloadHealthy ? "healthy" : "tripped"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
           </g>
         </svg>
       </div>
@@ -1650,6 +1654,15 @@ function SimulationStrip({
         </button>
         <button
           type="button"
+          className={inputs.controlFuseHealthy ? "is-active" : "stop-button is-active"}
+          aria-pressed={!inputs.controlFuseHealthy}
+          onClick={() => onInputsChange({ ...inputs, controlFuseHealthy: !inputs.controlFuseHealthy })}
+        >
+          <ShieldCheck size={14} />
+          FUSE
+        </button>
+        <button
+          type="button"
           className={`stop-button ${inputs.stopPressed ? "is-active" : ""}`}
           aria-pressed={inputs.stopPressed}
           onClick={() => onInputsChange({ ...inputs, stopPressed: !inputs.stopPressed })}
@@ -1688,6 +1701,7 @@ function SimulationStrip({
         <span aria-label="Timer progress" style={{ width: `${timerProgress}%` }} />
       </div>
       <div className="strip-readings">
+        <span>FUSE {inputs.controlFuseHealthy ? "closed" : "open"}</span>
         <span>START {inputs.startPressed ? "closed" : "open"}</span>
         <span>STOP {inputs.stopPressed ? "open" : "closed"}</span>
         <span>LIMIT {inputs.limitClosed ? "closed" : "open"}</span>
@@ -1708,6 +1722,8 @@ function SimulationStrip({
           </div>
           {signalRows.slice(0, 5).map((row) => {
             const active = snapshot ? signalActive(snapshot, row.key) : false;
+            const controlPowered = snapshot?.inputs.controlFuseHealthy ?? false;
+            const signalEnergized = active && controlPowered;
             const reading =
               row.key === "k1"
                 ? snapshot?.readings.find((item) => item.id === "r-k1")
@@ -1715,10 +1731,10 @@ function SimulationStrip({
                   ? snapshot?.readings.find((item) => item.id === "r-y0")
                   : undefined;
             return (
-              <div key={row.key} className={`signal-row ${active ? "is-active" : ""}`}>
+              <div key={row.key} className={`signal-row ${signalEnergized ? "is-active" : ""}`}>
                 <span>{row.label}</span>
-                <strong>{reading ? `${reading.voltageVac.toFixed(0)} V` : active ? "24 V" : "0 V"}</strong>
-                <em>{reading ? `${reading.currentA.toFixed(2)} A` : active ? "on" : "off"}</em>
+                <strong>{reading ? `${reading.voltageVac.toFixed(0)} V` : signalEnergized ? "24 V" : "0 V"}</strong>
+                <em>{reading ? `${reading.currentA.toFixed(2)} A` : signalEnergized ? "on" : "off"}</em>
               </div>
             );
           })}

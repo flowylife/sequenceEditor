@@ -193,6 +193,26 @@ describe("Sequence Editor app", () => {
     expect(screen.getAllByText(/PLC Y0: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
   });
 
+  it("lets the operator open FU1 and removes protected control voltage", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^FUSE$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 1 running/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("FUSE open")).toBeInTheDocument();
+    expect(screen.getAllByText("Blocked by FU1 control fuse open").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Control supply: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/K1 coil: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
+    const stopSignalRow = screen.getAllByText("SB0 STOP").map((item) => item.closest(".signal-row")).find(Boolean);
+    expect(stopSignalRow).toHaveTextContent("0 V");
+    expect(stopSignalRow).toHaveTextContent("off");
+  });
+
   it("saves the current project revision through the API", async () => {
     const apiProject = {
       id: "project-seq-001",
