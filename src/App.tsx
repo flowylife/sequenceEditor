@@ -40,6 +40,7 @@ import {
 } from "@xyflow/react";
 import {
   addComponent,
+  analyzeElectricalPaths,
   componentCatalog,
   createStarterProject,
   findDefinition,
@@ -49,6 +50,7 @@ import {
   type CircuitComponent,
   type CircuitModel,
   type ComponentDefinition,
+  type ElectricalPathAnalysis,
   type LogicElement,
   type LogicModel,
   buildLogicModel,
@@ -210,6 +212,7 @@ function App() {
   const flow = useMemo(() => modelToFlow(model, snapshot), [model, snapshot]);
   const logicModel = useMemo(() => buildLogicModel(model, snapshot), [model, snapshot]);
   const panelLayout = useMemo(() => buildPanelLayout(model, findings), [model, findings]);
+  const electricalAnalysis = useMemo(() => analyzeElectricalPaths(model, snapshot), [model, snapshot]);
   const activeWarnings = findings.filter((finding) => finding.severity !== "info");
   const isEmpty = model.components.length === 0;
 
@@ -645,7 +648,7 @@ function App() {
                 {inspectorTab === "validation" && (
                   <ValidationPanel findings={findings} error={validationError} selectedId={selectedComponent?.id} />
                 )}
-                {inspectorTab === "simulation" && <SimulationPanel snapshot={snapshot} findings={findings} />}
+                {inspectorTab === "simulation" && <SimulationPanel snapshot={snapshot} findings={findings} analysis={electricalAnalysis} />}
               </>
             )}
           </aside>
@@ -1133,7 +1136,15 @@ function ValidationPanel({ findings, error, selectedId }: { findings: Validation
   );
 }
 
-function SimulationPanel({ snapshot, findings }: { snapshot?: SimulationSnapshot; findings: ValidationFinding[] }) {
+function SimulationPanel({
+  snapshot,
+  findings,
+  analysis
+}: {
+  snapshot?: SimulationSnapshot;
+  findings: ValidationFinding[];
+  analysis: ElectricalPathAnalysis;
+}) {
   const hardFault = findings.some((finding) => finding.severity === "error");
   return (
     <div className="panel-content">
@@ -1158,6 +1169,47 @@ function SimulationPanel({ snapshot, findings }: { snapshot?: SimulationSnapshot
             <strong>{reading.voltageVac.toFixed(0)} VAC · {reading.currentA.toFixed(2)} A</strong>
           </div>
         ))}
+      </div>
+      <div className="path-analysis" aria-label="Electrical path analysis">
+        <div className="analysis-header">
+          <strong>Electrical path analysis</strong>
+          <span>{analysis.supplyVoltageVac} VAC · {analysis.totalDesignCurrentA.toFixed(2)} A design</span>
+        </div>
+        <div className="analysis-grid">
+          <span>Supply</span>
+          <strong>{analysis.supplyNetPresent ? "L24 present" : "L24 missing"}</strong>
+          <span>Reference</span>
+          <strong>{analysis.referenceNetPresent ? "N24 present" : "N24 missing"}</strong>
+        </div>
+        <div className="branch-list">
+          {analysis.branches.map((branch) => (
+            <article key={branch.id} className={`branch-card ${branch.status}`}>
+              <div>
+                <strong>{branch.label}</strong>
+                <span>{branch.liveState} · {branch.path.join(" -> ")}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>Load</dt>
+                  <dd>{branch.designCurrentA.toFixed(2)} A</dd>
+                </div>
+                <div>
+                  <dt>Live</dt>
+                  <dd>{branch.liveCurrentA.toFixed(2)} A</dd>
+                </div>
+                <div>
+                  <dt>Contact</dt>
+                  <dd>{branch.weakestContactRatingA ? `${branch.weakestContactRatingA.toFixed(1)} A` : "n/a"}</dd>
+                </div>
+                <div>
+                  <dt>Margin</dt>
+                  <dd>{branch.marginA === undefined ? "n/a" : `${branch.marginA.toFixed(2)} A`}</dd>
+                </div>
+              </dl>
+              <p>{branch.explanation}</p>
+            </article>
+          ))}
+        </div>
       </div>
     </div>
   );

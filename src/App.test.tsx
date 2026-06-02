@@ -115,6 +115,10 @@ describe("Sequence Editor app", () => {
     expect(screen.getAllByText("K1 Coil").length).toBeGreaterThan(0);
     expect(screen.getAllByText("KT1 TON").length).toBeGreaterThan(0);
     expect(screen.getAllByText("HL1 Lamp").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Electrical path analysis")).toBeInTheDocument();
+    expect(screen.getByText("Control seal-in branch")).toBeInTheDocument();
+    expect(screen.getByText(/0\.54 A/)).toBeInTheDocument();
+    expect(screen.getByText("N24 present")).toBeInTheDocument();
   });
 
   it("saves the current project revision through the API", async () => {

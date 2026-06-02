@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   addComponent,
+  analyzeElectricalPaths,
   buildLogicModel,
   buildPanelLayout,
+  componentCatalog,
   createStarterProject,
   simulateStep,
   summarizeFindings,
@@ -105,6 +107,36 @@ describe("electrical sequence domain", () => {
     const findings = validatePanelFit(project.model);
 
     expect(findings.map((finding) => finding.ruleId)).toContain("PANEL_CLEARANCE");
+  });
+
+  it("analyzes control branch load margins from the semantic circuit", () => {
+    const project = createStarterProject();
+    const snapshot = simulateStep(project.model, undefined, { startPressed: true });
+    const analysis = analyzeElectricalPaths(project.model, snapshot);
+    const controlBranch = analysis.branches.find((branch) => branch.id === "control-seal-in");
+
+    expect(analysis.supplyNetPresent).toBe(true);
+    expect(analysis.referenceNetPresent).toBe(true);
+    expect(controlBranch?.status).toBe("ok");
+    expect(controlBranch?.designCurrentA).toBeCloseTo(0.54, 2);
+    expect(controlBranch?.liveCurrentA).toBeCloseTo(0.54, 2);
+    expect(controlBranch?.weakestContactRatingA).toBe(3);
+  });
+
+  it("turns insufficient contact rating into a validation finding", () => {
+    const startDefinition = componentCatalog.find((definition) => definition.id === "pb-start-no");
+    if (!startDefinition) throw new Error("missing start pushbutton definition");
+    const originalRating = startDefinition.ratings.contactCurrentA;
+    startDefinition.ratings.contactCurrentA = 0.1;
+
+    try {
+      const project = createStarterProject();
+      const findings = validateCircuit(project.model);
+
+      expect(findings.some((finding) => finding.ruleId === "CONTACT_LOAD_MARGIN")).toBe(true);
+    } finally {
+      startDefinition.ratings.contactCurrentA = originalRating;
+    }
   });
 
   it("builds a mechanical panel layout with rail warnings and device envelopes", () => {

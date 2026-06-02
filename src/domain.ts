@@ -186,6 +186,37 @@ export interface PanelLayoutModel {
   totalDepthMm: number;
 }
 
+export interface ElectricalLoadBranch {
+  id: string;
+  label: string;
+  description: string;
+  componentIds: string[];
+  path: string[];
+  requiredVoltageVac: number;
+  designCurrentA: number;
+  liveCurrentA: number;
+  protectiveRatingA?: number;
+  weakestContactRatingA?: number;
+  marginA?: number;
+  liveState: "active" | "available" | "idle" | "blocked";
+  status: "ok" | "warning" | "error";
+  explanation: string;
+}
+
+export interface ElectricalPathAnalysis {
+  id: string;
+  standard: "IEC_KR_STEADY_STATE_RULES";
+  source: "semantic-circuit-analysis";
+  supplyVoltageVac: number;
+  supplyNetPresent: boolean;
+  referenceNetPresent: boolean;
+  totalDesignCurrentA: number;
+  totalLiveCurrentA: number;
+  branches: ElectricalLoadBranch[];
+  warningCount: number;
+  errorCount: number;
+}
+
 export const componentCatalog: ComponentDefinition[] = [
   {
     id: "mccb-2p-240",
@@ -421,6 +452,7 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
   const componentById = new Map(model.components.map((component) => [component.id, component]));
   const conductorKeys = new Set<string>();
   const connectedTerminals = new Set<string>();
+  const electricalAnalysis = analyzeElectricalPaths(model);
 
   for (const conductor of model.conductors) {
     const from = componentById.get(conductor.from);
@@ -531,7 +563,160 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
   }
 
   findings.push(...validatePanelFit(model));
+
+  if (!electricalAnalysis.supplyNetPresent || !electricalAnalysis.referenceNetPresent) {
+    findings.push({
+      id: "supply-reference-missing",
+      severity: "error",
+      ruleId: "SUPPLY_REFERENCE_PRESENT",
+      affectedObjectIds: [],
+      title: "Control supply reference is incomplete",
+      explanation: "The circuit needs both an L24 supply path and N24 reference path before simulation can be trusted.",
+      suggestedFix: "Wire the protected control supply and neutral/reference return nets, then rerun validation."
+    });
+  }
+
+  for (const branch of electricalAnalysis.branches) {
+    if (branch.status === "ok") {
+      continue;
+    }
+
+    findings.push({
+      id: `electrical-load-${branch.id}`,
+      severity: branch.status === "error" ? "error" : "warning",
+      ruleId: branch.status === "error" ? "CONTACT_LOAD_MARGIN" : "PROTECTIVE_DEVICE_MARGIN",
+      affectedObjectIds: branch.componentIds,
+      title: `${branch.label} has insufficient electrical margin`,
+      explanation: branch.explanation,
+      suggestedFix: "Select devices with higher ratings, split the branch load, or revise the sequence circuit topology."
+    });
+  }
   return findings;
+}
+
+export function analyzeElectricalPaths(model: CircuitModel, snapshot?: SimulationSnapshot): ElectricalPathAnalysis {
+  const supplyVoltageVac = 24;
+  const nets = new Set(model.conductors.map((conductor) => conductor.net));
+  const supplyNetPresent = nets.has("L24") || nets.has("L24-CONTROL");
+  const referenceNetPresent = nets.has("N24");
+  const componentByReference = new Map(model.components.map((component) => [component.reference, component]));
+  const componentsByKind = model.components.map((component) => ({
+    component,
+    definition: findDefinition(component.definitionId)
+  }));
+  const protectiveRatingA = Math.min(
+    ...componentsByKind
+      .filter(({ definition }) => definition.kind === "protective" && definition.ratings.ratedCurrentA)
+      .map(({ definition }) => definition.ratings.ratedCurrentA as number)
+  );
+
+  const branchLiveState = (activeNet: string, requiredRefs: string[]): ElectricalLoadBranch["liveState"] => {
+    if (!supplyNetPresent || !referenceNetPresent) return "blocked";
+    if (snapshot?.energizedNets.includes(activeNet)) return "active";
+    if (requiredRefs.every((reference) => componentByReference.has(reference))) return "available";
+    return "idle";
+  };
+
+  const componentIdsFor = (references: string[]) =>
+    references.map((reference) => componentByReference.get(reference)?.id).filter((id): id is string => Boolean(id));
+
+  const weakestContactRating = (references: string[]) => {
+    const ratings = references
+      .map((reference) => componentByReference.get(reference))
+      .filter((component): component is CircuitComponent => Boolean(component))
+      .map((component) => findDefinition(component.definitionId).ratings.contactCurrentA)
+      .filter((rating): rating is number => typeof rating === "number");
+    return ratings.length > 0 ? Math.min(...ratings) : undefined;
+  };
+
+  const loadCurrent = (reference: string) => {
+    const component = componentByReference.get(reference);
+    if (!component) return 0;
+    const ratings = findDefinition(component.definitionId).ratings;
+    if (ratings.ratedCurrentA) return ratings.ratedCurrentA;
+    if (ratings.burdenVa) return ratings.burdenVa / supplyVoltageVac;
+    return 0;
+  };
+
+  const makeBranch = (input: {
+    id: string;
+    label: string;
+    description: string;
+    path: string[];
+    contactReferences: string[];
+    loadReferences: string[];
+    activeNet: string;
+  }): ElectricalLoadBranch => {
+    const designCurrentA = input.loadReferences.reduce((sum, reference) => sum + loadCurrent(reference), 0);
+    const liveState = branchLiveState(input.activeNet, input.path);
+    const liveCurrentA = liveState === "active" ? designCurrentA : 0;
+    const weakestContactRatingA = weakestContactRating(input.contactReferences);
+    const protectiveLimit = Number.isFinite(protectiveRatingA) ? protectiveRatingA : undefined;
+    const protectiveMargin = protectiveLimit === undefined ? undefined : protectiveLimit - designCurrentA;
+    const contactMargin = weakestContactRatingA === undefined ? undefined : weakestContactRatingA - designCurrentA;
+    const marginA = Math.min(...[protectiveMargin, contactMargin].filter((margin): margin is number => typeof margin === "number"));
+    const hasMissingSupply = !supplyNetPresent || !referenceNetPresent;
+    const hasContactOverload = contactMargin !== undefined && contactMargin < 0;
+    const hasProtectionOverload = protectiveMargin !== undefined && protectiveMargin < 0;
+    const hasLowMargin = !hasContactOverload && !hasProtectionOverload && marginA !== undefined && marginA < 0.2;
+    const status: ElectricalLoadBranch["status"] = hasMissingSupply || hasContactOverload ? "error" : hasProtectionOverload || hasLowMargin ? "warning" : "ok";
+    const explanation =
+      status === "ok"
+        ? `${input.label} is within the selected contact and protective-device ratings.`
+        : `${input.label} design load is ${designCurrentA.toFixed(2)} A with ${marginA?.toFixed(2) ?? "unknown"} A margin.`;
+
+    return {
+      id: input.id,
+      label: input.label,
+      description: input.description,
+      componentIds: componentIdsFor([...input.path, ...input.contactReferences, ...input.loadReferences]),
+      path: input.path,
+      requiredVoltageVac: supplyVoltageVac,
+      designCurrentA,
+      liveCurrentA,
+      protectiveRatingA: protectiveLimit,
+      weakestContactRatingA,
+      marginA,
+      liveState,
+      status,
+      explanation
+    };
+  };
+
+  const branches = [
+    makeBranch({
+      id: "control-seal-in",
+      label: "Control seal-in branch",
+      description: "STOP/START and K1 auxiliary contact feed the K1 relay coil and KT1 timer coil.",
+      path: ["QF1", "FU1", "SB0", "SB1", "K1.13", "K1", "KT1"],
+      contactReferences: ["SB0", "SB1", "K1.13"],
+      loadReferences: ["K1", "KT1"],
+      activeNet: "START-LATCH"
+    }),
+    makeBranch({
+      id: "timer-plc-output",
+      label: "Timer output branch",
+      description: "KT1 done contact permits the PLC Y0 stub and panel run lamp load.",
+      path: ["KT1", "Y0", "HL1"],
+      contactReferences: ["KT1"],
+      loadReferences: ["HL1"],
+      activeNet: "PLC-Y0"
+    })
+  ];
+
+  return {
+    id: "electrical-path-analysis",
+    standard: "IEC_KR_STEADY_STATE_RULES",
+    source: "semantic-circuit-analysis",
+    supplyVoltageVac,
+    supplyNetPresent,
+    referenceNetPresent,
+    totalDesignCurrentA: branches.reduce((sum, branch) => sum + branch.designCurrentA, 0),
+    totalLiveCurrentA: branches.reduce((sum, branch) => sum + branch.liveCurrentA, 0),
+    branches,
+    warningCount: branches.filter((branch) => branch.status === "warning").length,
+    errorCount: branches.filter((branch) => branch.status === "error").length + (supplyNetPresent && referenceNetPresent ? 0 : 1)
+  };
 }
 
 export function validatePanelFit(model: CircuitModel): ValidationFinding[] {

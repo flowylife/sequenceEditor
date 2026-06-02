@@ -277,6 +277,8 @@ button {
 
 .canvas-toolbar,
 .simulation-strip {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -292,6 +294,8 @@ button {
 }
 
 .status-pill {
+  min-width: 0;
+  max-width: 100%;
   min-height: 28px;
   display: inline-flex;
   align-items: center;
@@ -350,6 +354,8 @@ button {
 
 .canvas-card {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   overflow: hidden;
   border: 1px solid #cfdae6;
@@ -1247,6 +1253,8 @@ button {
 .terminal-list,
 .net-list,
 .reading-list,
+.path-analysis,
+.branch-list,
 .finding-list {
   display: grid;
   gap: 8px;
@@ -1254,7 +1262,8 @@ button {
 }
 
 .terminal-list strong,
-.net-list strong {
+.net-list strong,
+.analysis-header strong {
   color: #111827;
   font-size: 12px;
 }
@@ -1288,6 +1297,106 @@ button {
   background: #fff8eb;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.path-analysis {
+  padding-top: 2px;
+}
+
+.analysis-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.analysis-header span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 6px 8px;
+  padding: 10px;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.analysis-grid span,
+.branch-card dt {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.analysis-grid strong,
+.branch-card dd {
+  margin: 0;
+  color: #111827;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.branch-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dbe4ee;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.branch-card.ok {
+  border-left-color: #10b981;
+}
+
+.branch-card.warning {
+  border-left-color: #f59e0b;
+}
+
+.branch-card.error {
+  border-left-color: #ef4444;
+}
+
+.branch-card > div:first-child strong,
+.branch-card > div:first-child span,
+.branch-card p {
+  display: block;
+}
+
+.branch-card > div:first-child strong {
+  color: #111827;
+  font-size: 12px;
+}
+
+.branch-card > div:first-child span,
+.branch-card p {
+  margin: 3px 0 0;
+  color: #667085;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.branch-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.branch-card dl div {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #edf2f7;
+  border-radius: 7px;
+  background: #f8fbff;
 }
 
 .inline-error {
@@ -1401,7 +1510,10 @@ button {
   }
 
   .command-group,
-  .canvas-toolbar {
+  .canvas-toolbar,
+  .toolbar-actions,
+  .status-cluster,
+  .strip-controls {
     flex-wrap: wrap;
   }
 
