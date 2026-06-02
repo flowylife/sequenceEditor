@@ -81,6 +81,12 @@ export interface UpdateComponentReferenceInput {
   reference: string;
 }
 
+export interface UpdateComponentSettingInput {
+  componentId: string;
+  key: string;
+  value: string | number | boolean;
+}
+
 export interface PanelPlacement {
   componentId: string;
   rail: "control-rail" | "terminal-rail" | "virtual";
@@ -585,6 +591,21 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
         explanation: "The selected IEC/KR profile expects 24 VAC control coils for this starter circuit.",
         suggestedFix: "Select a 24 VAC coil or change the project control-voltage profile."
       });
+    }
+
+    if (definition.kind === "timer") {
+      const delayMs = Number(component.settings?.delayMs ?? 3000);
+      if (!Number.isFinite(delayMs) || delayMs < 250 || delayMs > 600000) {
+        findings.push({
+          id: `timer-delay-${component.id}`,
+          severity: "error",
+          ruleId: "TIMER_SETTING_RANGE",
+          affectedObjectIds: [component.id],
+          title: `${component.reference} timer delay is outside the supported range`,
+          explanation: "Timer delay must be between 250 ms and 600000 ms for deterministic step simulation.",
+          suggestedFix: "Set the on-delay timer between 250 ms and 600000 ms, then rerun validation and simulation."
+        });
+      }
     }
   }
 
@@ -1294,6 +1315,28 @@ export function updateComponentReference(model: CircuitModel, input: UpdateCompo
   return {
     ...model,
     components: model.components.map((item) => (item.id === input.componentId ? { ...item, reference } : item))
+  };
+}
+
+export function updateComponentSetting(model: CircuitModel, input: UpdateComponentSettingInput): CircuitModel {
+  const component = model.components.find((item) => item.id === input.componentId);
+  if (!component) {
+    throw new Error(`Invalid component: ${input.componentId}`);
+  }
+
+  return {
+    ...model,
+    components: model.components.map((item) =>
+      item.id === input.componentId
+        ? {
+            ...item,
+            settings: {
+              ...item.settings,
+              [input.key]: input.value
+            }
+          }
+        : item
+    )
   };
 }
 

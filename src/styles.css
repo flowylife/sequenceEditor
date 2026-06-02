@@ -1279,6 +1279,14 @@ button {
   font-weight: 850;
 }
 
+.field-hint {
+  display: block;
+  margin-top: 5px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 750;
+}
+
 .terminal-list,
 .net-list,
 .reading-list,

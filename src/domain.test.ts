@@ -10,6 +10,7 @@ import {
   createStarterProject,
   simulateStep,
   summarizeFindings,
+  updateComponentSetting,
   validateCircuit,
   validatePanelFit
 } from "./domain";
@@ -51,6 +52,36 @@ describe("electrical sequence domain", () => {
     expect(snapshot.componentStates["c-y0"]).toBe("energized");
     expect(snapshot.componentStates["c-hl1"]).toBe("energized");
     expect(snapshot.energizedNets).toContain("PLC-Y0");
+  });
+
+  it("applies an edited timer delay setting to sequence simulation timing", () => {
+    const project = createStarterProject();
+    const tuned = updateComponentSetting(project.model, {
+      componentId: "c-kt1",
+      key: "delayMs",
+      value: 500
+    });
+
+    let snapshot = simulateStep(tuned, undefined, { startPressed: true });
+    snapshot = simulateStep(tuned, snapshot, { startPressed: false });
+
+    expect(snapshot.timerElapsedMs).toBe(500);
+    expect(snapshot.energizedNets).toContain("TIMER-DONE");
+    expect(snapshot.componentStates["c-y0"]).toBe("energized");
+  });
+
+  it("flags timer delay settings outside the supported range", () => {
+    const project = createStarterProject();
+    const invalidTimer = {
+      ...project.model,
+      components: project.model.components.map((component) =>
+        component.id === "c-kt1" ? { ...component, settings: { ...component.settings, delayMs: 0 } } : component
+      )
+    };
+
+    const findings = validateCircuit(invalidTimer);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "TIMER_SETTING_RANGE")).toBe(true);
   });
 
   it("drops the seal-in branch and timer when STOP is pressed", () => {

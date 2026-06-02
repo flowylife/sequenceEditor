@@ -49,6 +49,7 @@ import {
   simulateStep,
   summarizeFindings,
   updateComponentReference,
+  updateComponentSetting,
   validateCircuit,
   type CircuitComponent,
   type CircuitModel,
@@ -219,6 +220,11 @@ function App() {
   const panelLayout = useMemo(() => buildPanelLayout(model, findings), [model, findings]);
   const electricalAnalysis = useMemo(() => analyzeElectricalPaths(model, snapshot), [model, snapshot]);
   const netlist = useMemo(() => buildNetlist(model), [model]);
+  const timerDelayMs = useMemo(() => {
+    const timer = model.components.find((component) => component.reference === "KT1");
+    const delay = Number(timer?.settings?.delayMs ?? 3000);
+    return Number.isFinite(delay) && delay > 0 ? delay : 3000;
+  }, [model.components]);
   const activeWarnings = findings.filter((finding) => finding.severity !== "info");
   const isEmpty = model.components.length === 0;
 
@@ -351,6 +357,13 @@ function App() {
 
   const updateSelectedReference = (componentId: string, reference: string) => {
     const next = updateComponentReference(model, { componentId, reference });
+    setValidationError(null);
+    commitModel(next);
+    setSelectedId(componentId);
+  };
+
+  const updateSelectedSetting = (componentId: string, key: string, value: string | number | boolean) => {
+    const next = updateComponentSetting(model, { componentId, key, value });
     setValidationError(null);
     commitModel(next);
     setSelectedId(componentId);
@@ -636,6 +649,7 @@ function App() {
             snapshot={snapshot}
             history={simulationHistory}
             inputs={simulationInputs}
+            timerDelayMs={timerDelayMs}
             onInputsChange={updateSimulationInputs}
             onStep={stepSimulation}
             onReset={resetSimulation}
@@ -672,6 +686,7 @@ function App() {
                     conductors={model.conductors}
                     onAddConductor={addManualConductor}
                     onUpdateReference={updateSelectedReference}
+                    onUpdateSetting={updateSelectedSetting}
                   />
                 )}
                 {inspectorTab === "validation" && (
@@ -1085,7 +1100,8 @@ function SpecsPanel({
   components,
   conductors,
   onAddConductor,
-  onUpdateReference
+  onUpdateReference,
+  onUpdateSetting
 }: {
   component: CircuitComponent;
   definition: ComponentDefinition;
@@ -1094,6 +1110,7 @@ function SpecsPanel({
   conductors: CircuitModel["conductors"];
   onAddConductor: (input: AddConductorInput) => void;
   onUpdateReference: (componentId: string, reference: string) => void;
+  onUpdateSetting: (componentId: string, key: string, value: string | number | boolean) => void;
 }) {
   const firstTarget = components.find((item) => item.id !== component.id) ?? component;
   const [sourceTerminal, setSourceTerminal] = useState(definition.terminals[0]?.id ?? "");
@@ -1175,6 +1192,29 @@ function SpecsPanel({
           <dt>Panel fit</dt>
           <dd>{placement ? `${railLabels[placement.rail]} @ ${placement.xMm} mm` : "Not placed"}</dd>
         </div>
+        {definition.kind === "timer" && (
+          <div>
+            <dt>Timer delay</dt>
+            <dd>
+              <input
+                aria-label="Timer delay milliseconds"
+                className="reference-input"
+                type="number"
+                min="250"
+                max="600000"
+                step="250"
+                value={Number(component.settings?.delayMs ?? 3000)}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value);
+                  if (Number.isFinite(nextValue)) {
+                    onUpdateSetting(component.id, "delayMs", nextValue);
+                  }
+                }}
+              />
+              <small className="field-hint">ms · deterministic step simulation</small>
+            </dd>
+          </div>
+        )}
       </dl>
       <div className="terminal-list">
         <strong>Terminal map</strong>
@@ -1408,6 +1448,7 @@ function SimulationStrip({
   snapshot,
   history,
   inputs,
+  timerDelayMs,
   onInputsChange,
   onStep,
   onReset
@@ -1415,11 +1456,12 @@ function SimulationStrip({
   snapshot?: SimulationSnapshot;
   history: SimulationSnapshot[];
   inputs: SimulationInputs;
+  timerDelayMs: number;
   onInputsChange: (inputs: SimulationInputs) => void;
   onStep: () => void;
   onReset: () => void;
 }) {
-  const timerProgress = snapshot ? Math.min((snapshot.timerElapsedMs / 3000) * 100, 100) : 0;
+  const timerProgress = snapshot ? Math.min((snapshot.timerElapsedMs / timerDelayMs) * 100, 100) : 0;
   const timelineSteps = history.length > 0 ? history : snapshot ? [snapshot] : [];
   return (
     <div className="simulation-strip">
@@ -1452,7 +1494,7 @@ function SimulationStrip({
         </button>
       </div>
       <div className="timeline">
-        <span style={{ width: `${timerProgress}%` }} />
+        <span aria-label="Timer progress" style={{ width: `${timerProgress}%` }} />
       </div>
       <div className="strip-readings">
         <span>START {inputs.startPressed ? "closed" : "open"}</span>

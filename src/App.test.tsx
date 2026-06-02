@@ -254,6 +254,28 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText(/K2\.13 references K2/i)).toBeInTheDocument();
   });
 
+  it("lets the operator tune KT1 delay and simulates timer done from that setting", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText(/KT1 on-delay timer/i));
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Timer delay milliseconds"), { target: { value: "500" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 1 running/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 2 running/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("Timer 500 ms")).toBeInTheDocument();
+    expect(screen.getAllByText(/PLC Y0: 24 VAC \/ 0.03 A/i).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Timer progress")).toHaveStyle({ width: "100%" });
+  });
+
   it("keeps the wiring terminal options aligned with the selected component", () => {
     render(<App />);
 
