@@ -38,8 +38,8 @@ describe("Sequence Editor app", () => {
 
     expect(screen.getByLabelText("IEC sequence schematic CAD view")).toBeInTheDocument();
     expect(screen.getByText(/Motor Start\/Stop Seal-in Circuit/i)).toBeInTheDocument();
-    expect(screen.getByText("L24")).toBeInTheDocument();
-    expect(screen.getByText("N24")).toBeInTheDocument();
+    expect(screen.getAllByText("L24").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("N24").length).toBeGreaterThan(0);
     expect(screen.getByLabelText(/SB1 START NO/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/K1 Relay coil/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Show graph CAD view/i })).toBeInTheDocument();
@@ -177,6 +177,17 @@ describe("Sequence Editor app", () => {
     expect(screen.getAllByText("K1").length).toBeGreaterThan(0);
     expect(screen.getAllByText("KT1").length).toBeGreaterThan(0);
     expect(screen.getByText(/fit warnings/i)).toBeInTheDocument();
+  });
+
+  it("shows semantic netlist topology in validation", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    expect(screen.getByLabelText("Netlist topology")).toBeInTheDocument();
+    expect(screen.getByText("START-LATCH")).toBeInTheDocument();
+    expect(screen.getAllByText(/K1:A1/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/KT1:A1/)).toBeInTheDocument();
   });
 
   it("adds a semantic conductor from the inspector terminal wiring form", () => {

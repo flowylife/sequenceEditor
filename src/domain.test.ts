@@ -4,6 +4,7 @@ import {
   addConductor,
   analyzeElectricalPaths,
   buildLogicModel,
+  buildNetlist,
   buildPanelLayout,
   componentCatalog,
   createStarterProject,
@@ -139,6 +140,24 @@ describe("electrical sequence domain", () => {
         net: "BAD-NET"
       })
     ).toThrow(/invalid source terminal/i);
+  });
+
+  it("builds a netlist topology from conductor endpoints", () => {
+    const project = createStarterProject();
+    const netlist = buildNetlist(project.model);
+    const startLatch = netlist.nets.find((net) => net.id === "START-LATCH");
+
+    expect(netlist.source).toBe("semantic-circuit-conductors");
+    expect(startLatch?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("K1:A1");
+    expect(startLatch?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("KT1:A1");
+    expect(startLatch?.conductorIds).toEqual(["w4", "w9"]);
+  });
+
+  it("warns when one terminal is assigned to multiple net labels", () => {
+    const project = createStarterProject();
+    const findings = validateCircuit(project.model);
+
+    expect(findings.some((finding) => finding.ruleId === "TERMINAL_NET_CONSISTENCY")).toBe(true);
   });
 
   it("checks simple DIN rail mechanical clearance", () => {

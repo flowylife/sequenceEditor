@@ -1214,8 +1214,13 @@ button {
 }
 
 .validation-summary strong {
+  display: block;
   color: #111827;
   font-size: 13px;
+}
+
+.validation-summary span {
+  display: block;
 }
 
 .spec-grid {
@@ -1257,6 +1262,9 @@ button {
 .branch-list,
 .wiring-editor,
 .conductor-list,
+.netlist-topology,
+.netlist-table,
+.net-conflict-list,
 .finding-list {
   display: grid;
   gap: 8px;
@@ -1267,7 +1275,8 @@ button {
 .net-list strong,
 .analysis-header strong,
 .wiring-header strong,
-.conductor-list strong {
+.conductor-list strong,
+.netlist-header strong {
   color: #111827;
   font-size: 12px;
 }
@@ -1357,6 +1366,73 @@ button {
   color: #667085;
   font-size: 10px;
   font-weight: 800;
+}
+
+.netlist-topology {
+  padding-top: 2px;
+}
+
+.netlist-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.netlist-header span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.netlist-table article {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  border: 1px solid #dbe4ee;
+  border-left: 4px solid #60a5fa;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.netlist-table article div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.netlist-table strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 11px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.netlist-table span,
+.netlist-table p,
+.net-conflict-list span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.netlist-table p {
+  margin: 0;
+  color: #334155;
+}
+
+.net-conflict-list span {
+  padding: 7px 8px;
+  border: 1px solid #f3d79f;
+  border-radius: 7px;
+  color: #8a4b05;
+  background: #fff8eb;
 }
 
 .wiring-grid {

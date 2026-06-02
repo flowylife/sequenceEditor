@@ -225,6 +225,35 @@ export interface ElectricalPathAnalysis {
   errorCount: number;
 }
 
+export interface NetEndpoint {
+  componentId: string;
+  reference: string;
+  terminal: string;
+  role: TerminalDefinition["role"];
+  conductorIds: string[];
+}
+
+export interface NetTerminalConflict {
+  componentId: string;
+  reference: string;
+  terminal: string;
+  nets: string[];
+  conductorIds: string[];
+}
+
+export interface NetTopology {
+  id: string;
+  conductorIds: string[];
+  endpoints: NetEndpoint[];
+}
+
+export interface NetlistModel {
+  id: string;
+  source: "semantic-circuit-conductors";
+  nets: NetTopology[];
+  terminalConflicts: NetTerminalConflict[];
+}
+
 export const componentCatalog: ComponentDefinition[] = [
   {
     id: "mccb-2p-240",
@@ -461,6 +490,7 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
   const conductorKeys = new Set<string>();
   const connectedTerminals = new Set<string>();
   const electricalAnalysis = analyzeElectricalPaths(model);
+  const netlist = buildNetlist(model);
 
   for (const conductor of model.conductors) {
     const from = componentById.get(conductor.from);
@@ -553,6 +583,18 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
     }
   }
 
+  for (const conflict of netlist.terminalConflicts) {
+    findings.push({
+      id: `terminal-net-conflict-${conflict.componentId}-${conflict.terminal}`,
+      severity: "warning",
+      ruleId: "TERMINAL_NET_CONSISTENCY",
+      affectedObjectIds: [conflict.componentId, ...conflict.conductorIds],
+      title: `${conflict.reference} ${conflict.terminal} is assigned to multiple net labels`,
+      explanation: `${conflict.reference}:${conflict.terminal} appears on ${conflict.nets.join(", ")}. This usually means one electrical node has inconsistent net names.`,
+      suggestedFix: "Rename the connected conductors to one net label or add a documented terminal block/junction point."
+    });
+  }
+
   const contactLoads = model.components
     .map((component) => ({ component, definition: findDefinition(component.definitionId) }))
     .filter(({ definition }) => definition.kind === "relay-contact" || definition.kind === "pushbutton" || definition.kind === "limit-switch");
@@ -600,6 +642,83 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
     });
   }
   return findings;
+}
+
+export function buildNetlist(model: CircuitModel): NetlistModel {
+  const componentById = new Map(model.components.map((component) => [component.id, component]));
+  const netMap = new Map<string, { conductorIds: Set<string>; endpoints: Map<string, NetEndpoint> }>();
+  const terminalMap = new Map<string, { componentId: string; reference: string; terminal: string; nets: Set<string>; conductorIds: Set<string> }>();
+
+  for (const conductor of model.conductors) {
+    const from = componentById.get(conductor.from);
+    const to = componentById.get(conductor.to);
+    if (!from || !to) {
+      continue;
+    }
+
+    const fromTerminal = findDefinition(from.definitionId).terminals.find((terminal) => terminal.id === conductor.fromTerminal);
+    const toTerminal = findDefinition(to.definitionId).terminals.find((terminal) => terminal.id === conductor.toTerminal);
+    if (!fromTerminal || !toTerminal) {
+      continue;
+    }
+
+    const net = netMap.get(conductor.net) ?? { conductorIds: new Set<string>(), endpoints: new Map<string, NetEndpoint>() };
+    net.conductorIds.add(conductor.id);
+
+    for (const endpoint of [
+      { component: from, terminal: fromTerminal },
+      { component: to, terminal: toTerminal }
+    ]) {
+      const endpointKey = `${endpoint.component.id}:${endpoint.terminal.id}`;
+      const existingEndpoint = net.endpoints.get(endpointKey);
+      if (existingEndpoint) {
+        existingEndpoint.conductorIds.push(conductor.id);
+      } else {
+        net.endpoints.set(endpointKey, {
+          componentId: endpoint.component.id,
+          reference: endpoint.component.reference,
+          terminal: endpoint.terminal.id,
+          role: endpoint.terminal.role,
+          conductorIds: [conductor.id]
+        });
+      }
+
+      const terminalEntry =
+        terminalMap.get(endpointKey) ?? {
+          componentId: endpoint.component.id,
+          reference: endpoint.component.reference,
+          terminal: endpoint.terminal.id,
+          nets: new Set<string>(),
+          conductorIds: new Set<string>()
+        };
+      terminalEntry.nets.add(conductor.net);
+      terminalEntry.conductorIds.add(conductor.id);
+      terminalMap.set(endpointKey, terminalEntry);
+    }
+
+    netMap.set(conductor.net, net);
+  }
+
+  return {
+    id: "netlist-primary",
+    source: "semantic-circuit-conductors",
+    nets: [...netMap.entries()]
+      .map(([id, net]) => ({
+        id,
+        conductorIds: [...net.conductorIds].sort(),
+        endpoints: [...net.endpoints.values()].sort((first, second) => first.reference.localeCompare(second.reference) || first.terminal.localeCompare(second.terminal))
+      }))
+      .sort((first, second) => first.id.localeCompare(second.id)),
+    terminalConflicts: [...terminalMap.values()]
+      .filter((entry) => entry.nets.size > 1)
+      .map((entry) => ({
+        componentId: entry.componentId,
+        reference: entry.reference,
+        terminal: entry.terminal,
+        nets: [...entry.nets].sort(),
+        conductorIds: [...entry.conductorIds].sort()
+      }))
+  };
 }
 
 export function analyzeElectricalPaths(model: CircuitModel, snapshot?: SimulationSnapshot): ElectricalPathAnalysis {

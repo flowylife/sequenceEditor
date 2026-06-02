@@ -42,6 +42,7 @@ import {
   addComponent,
   addConductor,
   analyzeElectricalPaths,
+  buildNetlist,
   componentCatalog,
   createStarterProject,
   findDefinition,
@@ -55,6 +56,7 @@ import {
   type ElectricalPathAnalysis,
   type LogicElement,
   type LogicModel,
+  type NetlistModel,
   buildLogicModel,
   buildPanelLayout,
   type PanelLayoutModel,
@@ -215,6 +217,7 @@ function App() {
   const logicModel = useMemo(() => buildLogicModel(model, snapshot), [model, snapshot]);
   const panelLayout = useMemo(() => buildPanelLayout(model, findings), [model, findings]);
   const electricalAnalysis = useMemo(() => analyzeElectricalPaths(model, snapshot), [model, snapshot]);
+  const netlist = useMemo(() => buildNetlist(model), [model]);
   const activeWarnings = findings.filter((finding) => finding.severity !== "info");
   const isEmpty = model.components.length === 0;
 
@@ -662,7 +665,7 @@ function App() {
                   />
                 )}
                 {inspectorTab === "validation" && (
-                  <ValidationPanel findings={findings} error={validationError} selectedId={selectedComponent?.id} />
+                  <ValidationPanel findings={findings} error={validationError} selectedId={selectedComponent?.id} netlist={netlist} />
                 )}
                 {inspectorTab === "simulation" && <SimulationPanel snapshot={snapshot} findings={findings} analysis={electricalAnalysis} />}
               </>
@@ -1220,9 +1223,20 @@ function SpecsPanel({
   );
 }
 
-function ValidationPanel({ findings, error, selectedId }: { findings: ValidationFinding[]; error: string | null; selectedId?: string }) {
+function ValidationPanel({
+  findings,
+  error,
+  selectedId,
+  netlist
+}: {
+  findings: ValidationFinding[];
+  error: string | null;
+  selectedId?: string;
+  netlist: NetlistModel;
+}) {
   const selectedFindings = findings.filter((finding) => !selectedId || finding.affectedObjectIds.includes(selectedId));
   const visibleFindings = selectedFindings.length > 0 ? selectedFindings : findings.slice(0, 6);
+  const visibleNets = netlist.nets.slice(0, 8);
 
   return (
     <div className="panel-content">
@@ -1248,6 +1262,34 @@ function ValidationPanel({ findings, error, selectedId }: { findings: Validation
               <small>{finding.suggestedFix}</small>
             </article>
           ))
+        )}
+      </div>
+      <div className="netlist-topology" aria-label="Netlist topology">
+        <div className="netlist-header">
+          <strong>Netlist topology</strong>
+          <span>{netlist.nets.length} nets · {netlist.terminalConflicts.length} naming warnings</span>
+        </div>
+        <div className="netlist-table">
+          {visibleNets.map((net) => (
+            <article key={net.id}>
+              <div>
+                <strong>{net.id}</strong>
+                <span>{net.conductorIds.join(", ")}</span>
+              </div>
+              <p>
+                {net.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`).join(" · ")}
+              </p>
+            </article>
+          ))}
+        </div>
+        {netlist.terminalConflicts.length > 0 && (
+          <div className="net-conflict-list">
+            {netlist.terminalConflicts.map((conflict) => (
+              <span key={`${conflict.componentId}-${conflict.terminal}`}>
+                {conflict.reference}:{conflict.terminal} · {conflict.nets.join(" / ")}
+              </span>
+            ))}
+          </div>
         )}
       </div>
     </div>
