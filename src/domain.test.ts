@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import {
+  addComponent,
+  buildLogicModel,
+  buildPanelLayout,
+  createStarterProject,
+  simulateStep,
+  summarizeFindings,
+  validateCircuit,
+  validatePanelFit
+} from "./domain";
+
+describe("electrical sequence domain", () => {
+  it("validates the starter circuit without hard faults", () => {
+    const project = createStarterProject();
+    const findings = validateCircuit(project.model);
+    const summary = summarizeFindings(findings);
+
+    expect(summary.errors).toBe(0);
+    expect(summary.warnings).toBeGreaterThanOrEqual(1);
+    expect(findings.some((finding) => finding.ruleId === "PANEL_CLEARANCE")).toBe(true);
+  });
+
+  it("simulates relay seal-in before the timer output is ready", () => {
+    const project = createStarterProject();
+    const snapshot = simulateStep(project.model, undefined, { startPressed: true });
+
+    expect(snapshot.mode).toBe("running");
+    expect(snapshot.energizedNets).toContain("START-LATCH");
+    expect(snapshot.componentStates["c-k1"]).toBe("energized");
+    expect(snapshot.componentStates["c-k1a"]).toBe("closed");
+    expect(snapshot.componentStates["c-hl1"]).toBe("idle");
+    expect(snapshot.readings.find((reading) => reading.id === "r-k1")?.voltageVac).toBe(24);
+  });
+
+  it("keeps the relay sealed after START is released and completes the timer output", () => {
+    const project = createStarterProject();
+    let snapshot = simulateStep(project.model, undefined, { startPressed: true });
+
+    for (let index = 0; index < 11; index += 1) {
+      snapshot = simulateStep(project.model, snapshot, { startPressed: false });
+    }
+
+    expect(snapshot.inputs.startPressed).toBe(false);
+    expect(snapshot.timerElapsedMs).toBe(3000);
+    expect(snapshot.componentStates["c-k1"]).toBe("energized");
+    expect(snapshot.componentStates["c-y0"]).toBe("energized");
+    expect(snapshot.componentStates["c-hl1"]).toBe("energized");
+    expect(snapshot.energizedNets).toContain("PLC-Y0");
+  });
+
+  it("drops the seal-in branch and timer when STOP is pressed", () => {
+    const project = createStarterProject();
+    const running = simulateStep(project.model, undefined, { startPressed: true });
+    const stopped = simulateStep(project.model, running, { startPressed: false, stopPressed: true });
+
+    expect(stopped.componentStates["c-sb0"]).toBe("open");
+    expect(stopped.componentStates["c-k1"]).toBe("idle");
+    expect(stopped.componentStates["c-k1a"]).toBe("open");
+    expect(stopped.componentStates["c-y0"]).toBe("idle");
+    expect(stopped.timerElapsedMs).toBe(0);
+    expect(stopped.energizedNets).not.toContain("START-LATCH");
+  });
+
+  it("projects sequence circuit behavior into IEC ladder rungs", () => {
+    const project = createStarterProject();
+    let snapshot = simulateStep(project.model, undefined, { startPressed: true });
+    for (let index = 0; index < 11; index += 1) {
+      snapshot = simulateStep(project.model, snapshot, { startPressed: false });
+    }
+    const logicModel = buildLogicModel(project.model, snapshot);
+
+    expect(logicModel.standard).toBe("IEC_61131_3_LD");
+    expect(logicModel.rungs).toHaveLength(3);
+    expect(logicModel.rungs[0].label).toContain("Start/stop");
+    expect(logicModel.rungs[0].inputs.map((input) => input.reference)).toEqual(["SB0", "SB1"]);
+    expect(logicModel.rungs[0].sealIn?.reference).toBe("K1.13");
+    expect(logicModel.rungs[2].output.reference).toBe("Y0");
+    expect(logicModel.rungs.every((rung) => rung.energized)).toBe(true);
+  });
+
+  it("flags a missing coil terminal as a hard validation error", () => {
+    const project = createStarterProject();
+    const broken = {
+      ...project.model,
+      conductors: project.model.conductors.filter((conductor) => conductor.id !== "w9")
+    };
+
+    const findings = validateCircuit(broken);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "TERMINAL_CONNECTED")).toBe(true);
+  });
+
+  it("adds catalog components through the semantic model rather than canvas state", () => {
+    const project = createStarterProject();
+    const next = addComponent(project.model, "terminal-block");
+
+    expect(next.components).toHaveLength(project.model.components.length + 1);
+    expect(next.panelPlacements).toHaveLength(project.model.panelPlacements.length + 1);
+    expect(next.components.at(-1)?.definitionId).toBe("terminal-block");
+  });
+
+  it("checks simple DIN rail mechanical clearance", () => {
+    const project = createStarterProject();
+    const findings = validatePanelFit(project.model);
+
+    expect(findings.map((finding) => finding.ruleId)).toContain("PANEL_CLEARANCE");
+  });
+
+  it("builds a mechanical panel layout with rail warnings and device envelopes", () => {
+    const project = createStarterProject();
+    const panelLayout = buildPanelLayout(project.model);
+    const controlRail = panelLayout.rails.find((rail) => rail.id === "control-rail");
+
+    expect(panelLayout.standard).toBe("IEC_KR_PANEL_FIT");
+    expect(controlRail?.items.map((item) => item.reference)).toContain("K1");
+    expect(controlRail?.items.map((item) => item.reference)).toContain("KT1");
+    expect(panelLayout.warningCount).toBeGreaterThanOrEqual(1);
+    expect(controlRail?.items.some((item) => item.status === "warning")).toBe(true);
+    expect(panelLayout.totalDepthMm).toBeGreaterThan(0);
+  });
+});
