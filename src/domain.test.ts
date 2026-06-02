@@ -160,6 +160,21 @@ describe("electrical sequence domain", () => {
     expect(findings.some((finding) => finding.ruleId === "TERMINAL_NET_CONSISTENCY")).toBe(true);
   });
 
+  it("flags a supply-reference short when L24 and N24 share a terminal node", () => {
+    const project = createStarterProject();
+    const shorted = addConductor(project.model, {
+      fromComponentId: "c-qf1",
+      fromTerminal: "T1",
+      toComponentId: "c-k1",
+      toTerminal: "A2",
+      net: "L24"
+    });
+
+    const findings = validateCircuit(shorted);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "SUPPLY_REFERENCE_SHORT")).toBe(true);
+  });
+
   it("checks simple DIN rail mechanical clearance", () => {
     const project = createStarterProject();
     const findings = validatePanelFit(project.model);

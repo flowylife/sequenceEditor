@@ -1237,14 +1237,15 @@ function ValidationPanel({
   const selectedFindings = findings.filter((finding) => !selectedId || finding.affectedObjectIds.includes(selectedId));
   const visibleFindings = selectedFindings.length > 0 ? selectedFindings : findings.slice(0, 6);
   const visibleNets = netlist.nets.slice(0, 8);
+  const hasError = findings.some((finding) => finding.severity === "error");
 
   return (
     <div className="panel-content">
       {error && <div className="inline-error">{error}</div>}
-      <div className="validation-summary">
+      <div className={`validation-summary ${hasError ? "has-error" : ""}`}>
         <CheckCircle2 size={20} />
         <div>
-          <strong>{findings.some((finding) => finding.severity === "error") ? "Review required" : "Simulation-ready"}</strong>
+          <strong>{hasError ? "Review required" : "Simulation-ready"}</strong>
           <span>{findings.length} rule findings from IEC/KR profile v0.1</span>
         </div>
       </div>

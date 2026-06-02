@@ -584,6 +584,21 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
   }
 
   for (const conflict of netlist.terminalConflicts) {
+    const hasSupplyNet = conflict.nets.some((net) => net === "L24" || net.startsWith("L24-"));
+    const hasReferenceNet = conflict.nets.includes("N24");
+    if (hasSupplyNet && hasReferenceNet) {
+      findings.push({
+        id: `supply-reference-short-${conflict.componentId}-${conflict.terminal}`,
+        severity: "error",
+        ruleId: "SUPPLY_REFERENCE_SHORT",
+        affectedObjectIds: [conflict.componentId, ...conflict.conductorIds],
+        title: "Control supply is shorted to reference",
+        explanation: `${conflict.reference}:${conflict.terminal} connects ${conflict.nets.join(", ")}. The 24 VAC supply and reference return must not share the same terminal node.`,
+        suggestedFix: "Remove the shorting conductor or move the return connection to the correct N24 terminal path."
+      });
+      continue;
+    }
+
     findings.push({
       id: `terminal-net-conflict-${conflict.componentId}-${conflict.terminal}`,
       severity: "warning",

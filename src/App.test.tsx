@@ -205,6 +205,23 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText("Unsaved local changes")).toBeInTheDocument();
   });
 
+  it("surfaces a supply-reference short created through terminal wiring", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Target component"), { target: { value: "c-qf1" } });
+    fireEvent.change(screen.getByLabelText("Source terminal"), { target: { value: "A2" } });
+    fireEvent.change(screen.getByLabelText("Target terminal"), { target: { value: "T1" } });
+    fireEvent.change(screen.getByLabelText("Net name"), { target: { value: "L24" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add conductor/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    const summary = screen.getByText("Review required").closest(".validation-summary");
+    expect(summary).toHaveClass("has-error");
+    expect(screen.getByText("SUPPLY_REFERENCE_SHORT")).toBeInTheDocument();
+    expect(screen.getByText(/Control supply is shorted to reference/i)).toBeInTheDocument();
+  });
+
   it("keeps the wiring terminal options aligned with the selected component", () => {
     render(<App />);
 
