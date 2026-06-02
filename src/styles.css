@@ -1012,6 +1012,28 @@ button {
   padding: 0 10px;
 }
 
+.preset-picker {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid #cfd9e4;
+  border-radius: 8px;
+  color: #263548;
+  background: #ffffff;
+}
+
+.preset-picker select {
+  max-width: 176px;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .strip-controls button.is-active {
   color: #14532d;
   border-color: #86efac;

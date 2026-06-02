@@ -137,6 +137,33 @@ async function saveSimulationPresetRecord(preset: SimulationPreset) {
   return preset;
 }
 
+async function listSimulationPresetRecords(projectId: string) {
+  if (!pool) {
+    return memorySimulationPresets.get(projectId) ?? [];
+  }
+
+  const result = await pool.query(
+    `
+      select id, project_id, name, inputs, created_at
+      from simulation_presets
+      where project_id = $1
+      order by created_at desc
+      limit 20
+    `,
+    [projectId]
+  );
+  return result.rows.map(
+    (row) =>
+      ({
+        id: row.id,
+        projectId: row.project_id,
+        name: row.name,
+        inputs: row.inputs,
+        createdAt: row.created_at.toISOString()
+      }) satisfies SimulationPreset
+  );
+}
+
 app.get("/api/health", (_request, response) => {
   response.json({
     ok: true,
@@ -221,6 +248,16 @@ app.post("/api/projects/:id/simulation-presets", async (request, response) => {
     createdAt: new Date().toISOString()
   };
   response.status(201).json({ data: await saveSimulationPresetRecord(preset) });
+});
+
+app.get("/api/projects/:id/simulation-presets", async (request, response) => {
+  const existing = await loadProject(request.params.id);
+  if (!existing) {
+    response.status(404).json({ error: "project_not_found" });
+    return;
+  }
+
+  response.json({ data: await listSimulationPresetRecords(existing.id) });
 });
 
 app.post("/api/validate", async (request, response) => {

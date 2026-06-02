@@ -13,6 +13,7 @@ import {
   Rows3,
   RotateCcw,
   Save,
+  SlidersHorizontal,
   ShieldCheck,
   Square,
   StepForward,
@@ -21,7 +22,7 @@ import {
   Undo2,
   Zap
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -72,6 +73,7 @@ import {
 } from "./domain";
 import {
   createProject,
+  listSimulationPresets,
   loadProject,
   saveProjectRevision,
   saveSimulationPreset,
@@ -231,6 +233,8 @@ function App() {
   const [snapshot, setSnapshot] = useState<SimulationSnapshot | undefined>(initialSnapshot);
   const [simulationHistory, setSimulationHistory] = useState<SimulationSnapshot[]>([initialSnapshot]);
   const [savedPreset, setSavedPreset] = useState<SimulationPreset | undefined>();
+  const [simulationPresets, setSimulationPresets] = useState<SimulationPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>();
   const [history, setHistory] = useState<CircuitModel[]>([starterProject.model]);
   const [projectId, setProjectId] = useState<string | undefined>(starterProject.id);
   const [activeRevision, setActiveRevision] = useState(starterProject.activeRevision);
@@ -255,6 +259,33 @@ function App() {
   }, [model.components]);
   const activeWarnings = findings.filter((finding) => finding.severity !== "info");
   const isEmpty = model.components.length === 0;
+  const selectedPreset = useMemo(
+    () => simulationPresets.find((preset) => preset.id === selectedPresetId) ?? savedPreset,
+    [savedPreset, selectedPresetId, simulationPresets]
+  );
+
+  const loadSimulationPresetList = useCallback(async (nextProjectId: string | undefined) => {
+    if (!nextProjectId) {
+      setSimulationPresets([]);
+      setSelectedPresetId(undefined);
+      return;
+    }
+
+    try {
+      const responsePresets = await listSimulationPresets(nextProjectId);
+      const presets = Array.isArray(responsePresets) ? responsePresets : [];
+      setSelectedPresetId((currentId) =>
+        currentId && presets.some((preset) => preset.id === currentId) ? currentId : presets[0]?.id
+      );
+      setSimulationPresets(presets);
+    } catch {
+      // Preset loading is opportunistic; validation and simulation still work locally.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSimulationPresetList(projectId);
+  }, [loadSimulationPresetList, projectId]);
 
   const commitModel = useCallback((nextModel: CircuitModel) => {
     setHistory((items) => [...items, nextModel].slice(-20));
@@ -393,23 +424,27 @@ function App() {
         inputs: simulationInputs
       });
       setSavedPreset(preset);
+      setSimulationPresets((items) => [preset, ...items.filter((item) => item.id !== preset.id)].slice(0, 20));
+      setSelectedPresetId(preset.id);
       setSyncStatus("saved");
       setSyncMessage("Preset saved from API");
     } catch {
       setSavedPreset(localPreset);
+      setSimulationPresets((items) => [localPreset, ...items.filter((item) => item.id !== localPreset.id)].slice(0, 20));
+      setSelectedPresetId(localPreset.id);
       setSyncStatus("api-fallback");
       setSyncMessage("API unavailable; preset saved locally");
     }
   };
 
   const applyPreset = () => {
-    if (!savedPreset) return;
-    setSimulationInputs(savedPreset.inputs);
+    if (!selectedPreset) return;
+    setSimulationInputs(selectedPreset.inputs);
     setSnapshot(undefined);
     setSimulationHistory([]);
     setInspectorTab("simulation");
     setSyncStatus("local");
-    setSyncMessage(`Applied ${savedPreset.name}`);
+    setSyncMessage(`Applied ${selectedPreset.name}`);
   };
 
   const addCatalogPart = (definitionId: string) => {
@@ -459,6 +494,8 @@ function App() {
     setProjectId(undefined);
     setActiveRevision(0);
     setSavedPreset(undefined);
+    setSimulationPresets([]);
+    setSelectedPresetId(undefined);
     commitModel(emptyModel);
     setSelectedId(undefined);
     setSnapshot(undefined);
@@ -476,6 +513,7 @@ function App() {
       setProjectId(project.id);
       setActiveRevision(project.activeRevision);
       setSavedPreset(undefined);
+      void loadSimulationPresetList(project.id);
       setHistory([project.model]);
       setModel(project.model);
       setSelectedId(getDefaultSelectedComponentId(project.model));
@@ -495,6 +533,8 @@ function App() {
       setProjectId(next.id);
       setActiveRevision(next.activeRevision);
       setSavedPreset(undefined);
+      setSimulationPresets([]);
+      setSelectedPresetId(undefined);
       setHistory([next.model]);
       setModel(next.model);
       setSelectedId(getDefaultSelectedComponentId(next.model));
@@ -737,7 +777,10 @@ function App() {
             history={simulationHistory}
             inputs={simulationInputs}
             timerDelayMs={timerDelayMs}
-            savedPreset={savedPreset}
+            savedPreset={selectedPreset}
+            presets={simulationPresets}
+            selectedPresetId={selectedPresetId}
+            onPresetSelect={setSelectedPresetId}
             onInputsChange={updateSimulationInputs}
             onStep={stepSimulation}
             onReset={resetSimulation}
@@ -1685,6 +1728,9 @@ function SimulationStrip({
   inputs,
   timerDelayMs,
   savedPreset,
+  presets,
+  selectedPresetId,
+  onPresetSelect,
   onInputsChange,
   onStep,
   onReset,
@@ -1696,6 +1742,9 @@ function SimulationStrip({
   inputs: SimulationInputs;
   timerDelayMs: number;
   savedPreset?: SimulationPreset;
+  presets: SimulationPreset[];
+  selectedPresetId?: string;
+  onPresetSelect: (presetId: string) => void;
   onInputsChange: (inputs: SimulationInputs) => void;
   onStep: () => void;
   onReset: () => void;
@@ -1768,6 +1817,22 @@ function SimulationStrip({
           <RotateCcw size={16} />
           Apply preset
         </button>
+        {presets.length > 0 && (
+          <label className="preset-picker">
+            <SlidersHorizontal size={14} />
+            <select
+              aria-label="Saved simulation presets"
+              value={selectedPresetId ?? presets[0]?.id ?? ""}
+              onChange={(event) => onPresetSelect(event.target.value)}
+            >
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div className="timeline">
         <span aria-label="Timer progress" style={{ width: `${timerProgress}%` }} />

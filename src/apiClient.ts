@@ -90,3 +90,7 @@ export async function saveSimulationPreset(
     body: JSON.stringify(input)
   });
 }
+
+export async function listSimulationPresets(projectId: string): Promise<SimulationPreset[]> {
+  return requestJson<SimulationPreset[]>(`/projects/${projectId}/simulation-presets`);
+}

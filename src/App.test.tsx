@@ -262,6 +262,51 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText("Applied Saved simulation preset")).toBeInTheDocument();
   });
 
+  it("loads persisted simulation presets and applies the selected input state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (method === "GET" && url.endsWith("/api/projects/project-seq-001/simulation-presets")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                data: [
+                  {
+                    id: "preset-fuse-open-diagnostic",
+                    projectId: "project-seq-001",
+                    name: "Fuse open diagnostic",
+                    inputs: {
+                      startPressed: false,
+                      stopPressed: false,
+                      limitClosed: true,
+                      overloadHealthy: true,
+                      controlFuseHealthy: false
+                    },
+                    createdAt: new Date().toISOString()
+                  }
+                ]
+              })
+          });
+        }
+        return Promise.reject(new Error("offline api"));
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Fuse open diagnostic")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Apply saved preset/i }));
+
+    expect(screen.getByText("FUSE open")).toBeInTheDocument();
+    expect(screen.getByText("Applied Fuse open diagnostic")).toBeInTheDocument();
+  });
+
   it("saves the current project revision through the API", async () => {
     const apiProject = {
       id: "project-seq-001",
