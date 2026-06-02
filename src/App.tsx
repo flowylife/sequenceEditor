@@ -40,6 +40,7 @@ import {
 } from "@xyflow/react";
 import {
   addComponent,
+  addConductor,
   analyzeElectricalPaths,
   componentCatalog,
   createStarterProject,
@@ -50,6 +51,7 @@ import {
   type CircuitComponent,
   type CircuitModel,
   type ComponentDefinition,
+  type AddConductorInput,
   type ElectricalPathAnalysis,
   type LogicElement,
   type LogicModel,
@@ -334,6 +336,13 @@ function App() {
     setValidationError(null);
     commitModel(next);
     setSelectedId(next.components[next.components.length - 1]?.id);
+  };
+
+  const addManualConductor = (input: AddConductorInput) => {
+    const next = addConductor(model, input);
+    setValidationError(null);
+    commitModel(next);
+    setSelectedId(input.fromComponentId);
   };
 
   const loadEmptyProject = () => {
@@ -643,7 +652,14 @@ function App() {
                   ))}
                 </div>
                 {inspectorTab === "specs" && selectedComponent && selectedDefinition && (
-                  <SpecsPanel component={selectedComponent} definition={selectedDefinition} placement={selectedPlacement} />
+                  <SpecsPanel
+                    component={selectedComponent}
+                    definition={selectedDefinition}
+                    placement={selectedPlacement}
+                    components={model.components}
+                    conductors={model.conductors}
+                    onAddConductor={addManualConductor}
+                  />
                 )}
                 {inspectorTab === "validation" && (
                   <ValidationPanel findings={findings} error={validationError} selectedId={selectedComponent?.id} />
@@ -1051,12 +1067,53 @@ function LogicOutput({ element }: { element: LogicElement }) {
 function SpecsPanel({
   component,
   definition,
-  placement
+  placement,
+  components,
+  conductors,
+  onAddConductor
 }: {
   component: CircuitComponent;
   definition: ComponentDefinition;
   placement?: { rail: string; xMm: number; yMm: number };
+  components: CircuitComponent[];
+  conductors: CircuitModel["conductors"];
+  onAddConductor: (input: AddConductorInput) => void;
 }) {
+  const firstTarget = components.find((item) => item.id !== component.id) ?? component;
+  const [sourceTerminal, setSourceTerminal] = useState(definition.terminals[0]?.id ?? "");
+  const [targetComponentId, setTargetComponentId] = useState(firstTarget.id);
+  const targetComponent = components.find((item) => item.id === targetComponentId) ?? firstTarget;
+  const targetDefinition = findDefinition(targetComponent.definitionId);
+  const [targetTerminal, setTargetTerminal] = useState(targetDefinition.terminals[0]?.id ?? "");
+  const [netName, setNetName] = useState(`${component.reference}-${targetComponent.reference}`);
+  const [wiringError, setWiringError] = useState<string | null>(null);
+  const selectedConductors = conductors.filter((conductor) => conductor.from === component.id || conductor.to === component.id);
+  const referenceById = new Map(components.map((item) => [item.id, item.reference]));
+
+  const updateTargetComponent = (componentId: string) => {
+    const nextTarget = components.find((item) => item.id === componentId);
+    if (!nextTarget) return;
+    const nextDefinition = findDefinition(nextTarget.definitionId);
+    setTargetComponentId(componentId);
+    setTargetTerminal(nextDefinition.terminals[0]?.id ?? "");
+    setNetName(`${component.reference}-${nextTarget.reference}`);
+  };
+
+  const submitConductor = () => {
+    try {
+      onAddConductor({
+        fromComponentId: component.id,
+        fromTerminal: sourceTerminal,
+        toComponentId: targetComponent.id,
+        toTerminal: targetTerminal,
+        net: netName
+      });
+      setWiringError(null);
+    } catch (error) {
+      setWiringError(error instanceof Error ? error.message : "Unable to add conductor");
+    }
+  };
+
   return (
     <div className="panel-content">
       <div className="selected-card">
@@ -1096,6 +1153,67 @@ function SpecsPanel({
             <small>{terminal.role}</small>
           </span>
         ))}
+      </div>
+      <div className="wiring-editor" aria-label="Terminal wiring editor">
+        <div className="wiring-header">
+          <strong>Wire selected terminals</strong>
+          <span>{component.reference} as source</span>
+        </div>
+        {wiringError && <div className="inline-error">{wiringError}</div>}
+        <div className="wiring-grid">
+          <label>
+            <span>Source terminal</span>
+            <select aria-label="Source terminal" value={sourceTerminal} onChange={(event) => setSourceTerminal(event.target.value)}>
+              {definition.terminals.map((terminal) => (
+                <option key={terminal.id} value={terminal.id}>
+                  {terminal.label} · {terminal.role}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Target component</span>
+            <select aria-label="Target component" value={targetComponentId} onChange={(event) => updateTargetComponent(event.target.value)}>
+              {components
+                .filter((item) => item.id !== component.id)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.reference} · {findDefinition(item.definitionId).name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            <span>Target terminal</span>
+            <select aria-label="Target terminal" value={targetTerminal} onChange={(event) => setTargetTerminal(event.target.value)}>
+              {targetDefinition.terminals.map((terminal) => (
+                <option key={terminal.id} value={terminal.id}>
+                  {terminal.label} · {terminal.role}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Net name</span>
+            <input aria-label="Net name" value={netName} onChange={(event) => setNetName(event.target.value)} />
+          </label>
+        </div>
+        <button type="button" onClick={submitConductor}>Add conductor</button>
+      </div>
+      <div className="conductor-list" aria-label="Selected component conductors">
+        <strong>Conductor list</strong>
+        {selectedConductors.length === 0 ? (
+          <div className="soft-empty">No conductors touch this component yet.</div>
+        ) : (
+          selectedConductors.map((conductor) => (
+            <span key={conductor.id}>
+              <b>
+                {referenceById.get(conductor.from)}:{conductor.fromTerminal} -&gt; {referenceById.get(conductor.to)}:{conductor.toTerminal}
+              </b>
+              <small>{conductor.net}</small>
+            </span>
+          ))
+        )}
       </div>
       <p className="safety-note">Rule-based engineering aid. Results are not regulatory certification or guaranteed safety approval.</p>
     </div>

@@ -178,4 +178,29 @@ describe("Sequence Editor app", () => {
     expect(screen.getAllByText("KT1").length).toBeGreaterThan(0);
     expect(screen.getByText(/fit warnings/i)).toBeInTheDocument();
   });
+
+  it("adds a semantic conductor from the inspector terminal wiring form", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Target component"), { target: { value: "c-hl1" } });
+    fireEvent.change(screen.getByLabelText("Source terminal"), { target: { value: "A2" } });
+    fireEvent.change(screen.getByLabelText("Target terminal"), { target: { value: "X1" } });
+    fireEvent.change(screen.getByLabelText("Net name"), { target: { value: "FIELD-RETURN" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add conductor/i }));
+
+    expect(screen.getByText("K1:A2 -> HL1:X1")).toBeInTheDocument();
+    expect(screen.getByText("FIELD-RETURN")).toBeInTheDocument();
+    expect(screen.getByText("Unsaved local changes")).toBeInTheDocument();
+  });
+
+  it("keeps the wiring terminal options aligned with the selected component", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.click(screen.getByLabelText(/HL1 pilot lamp/i));
+
+    expect(screen.getByLabelText("Source terminal")).toHaveValue("X1");
+    expect(screen.getByText("HL1 as source")).toBeInTheDocument();
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addComponent,
+  addConductor,
   analyzeElectricalPaths,
   buildLogicModel,
   buildPanelLayout,
@@ -100,6 +101,44 @@ describe("electrical sequence domain", () => {
     expect(next.components).toHaveLength(project.model.components.length + 1);
     expect(next.panelPlacements).toHaveLength(project.model.panelPlacements.length + 1);
     expect(next.components.at(-1)?.definitionId).toBe("terminal-block");
+  });
+
+  it("adds terminal-to-terminal conductors through the semantic model", () => {
+    const project = createStarterProject();
+    const withTerminal = addComponent(project.model, "terminal-block");
+    const terminalBlock = withTerminal.components.at(-1);
+    if (!terminalBlock) throw new Error("terminal block was not created");
+
+    const next = addConductor(withTerminal, {
+      fromComponentId: "c-k1",
+      fromTerminal: "A2",
+      toComponentId: terminalBlock.id,
+      toTerminal: "1",
+      net: "FIELD-N24"
+    });
+
+    expect(next.conductors).toHaveLength(withTerminal.conductors.length + 1);
+    expect(next.conductors.at(-1)).toMatchObject({
+      from: "c-k1",
+      fromTerminal: "A2",
+      to: terminalBlock.id,
+      toTerminal: "1",
+      net: "FIELD-N24"
+    });
+  });
+
+  it("rejects conductors that do not match component terminal maps", () => {
+    const project = createStarterProject();
+
+    expect(() =>
+      addConductor(project.model, {
+        fromComponentId: "c-k1",
+        fromTerminal: "NOPE",
+        toComponentId: "c-hl1",
+        toTerminal: "X1",
+        net: "BAD-NET"
+      })
+    ).toThrow(/invalid source terminal/i);
   });
 
   it("checks simple DIN rail mechanical clearance", () => {

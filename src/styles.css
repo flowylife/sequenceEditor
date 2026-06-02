@@ -1255,6 +1255,8 @@ button {
 .reading-list,
 .path-analysis,
 .branch-list,
+.wiring-editor,
+.conductor-list,
 .finding-list {
   display: grid;
   gap: 8px;
@@ -1263,13 +1265,16 @@ button {
 
 .terminal-list strong,
 .net-list strong,
-.analysis-header strong {
+.analysis-header strong,
+.wiring-header strong,
+.conductor-list strong {
   color: #111827;
   font-size: 12px;
 }
 
 .terminal-list span,
-.net-list span {
+.net-list span,
+.conductor-list span {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1288,6 +1293,23 @@ button {
   font-size: 10px;
 }
 
+.conductor-list b {
+  min-width: 0;
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conductor-list small {
+  flex: 0 0 auto;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 850;
+}
+
 .safety-note {
   margin: 12px 0 0;
   padding: 10px;
@@ -1303,6 +1325,13 @@ button {
   padding-top: 2px;
 }
 
+.wiring-editor {
+  padding: 10px;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
 .analysis-header {
   display: flex;
   align-items: flex-start;
@@ -1315,6 +1344,62 @@ button {
   font-size: 10px;
   font-weight: 800;
   text-align: right;
+}
+
+.wiring-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wiring-header span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.wiring-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wiring-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.wiring-grid label span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.wiring-grid select,
+.wiring-grid input {
+  min-width: 0;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid #d7e1eb;
+  border-radius: 7px;
+  color: #172033;
+  background: #f8fbff;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.wiring-editor button {
+  min-height: 32px;
+  border: 1px solid #2563eb;
+  border-radius: 7px;
+  color: #ffffff;
+  background: #2563eb;
+  font-size: 11px;
+  font-weight: 850;
 }
 
 .analysis-grid {
@@ -1519,6 +1604,10 @@ button {
 
   .simulation-strip,
   .signal-monitor {
+    grid-template-columns: 1fr;
+  }
+
+  .wiring-grid {
     grid-template-columns: 1fr;
   }
 

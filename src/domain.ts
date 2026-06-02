@@ -68,6 +68,14 @@ export interface Conductor {
   net: string;
 }
 
+export interface AddConductorInput {
+  fromComponentId: string;
+  fromTerminal: string;
+  toComponentId: string;
+  toTerminal: string;
+  net: string;
+}
+
 export interface PanelPlacement {
   componentId: string;
   rail: "control-rail" | "terminal-rail" | "virtual";
@@ -1054,6 +1062,51 @@ export function addComponent(model: CircuitModel, definitionId: string): Circuit
         rail: definition.mechanical.mount === "din-rail" ? "control-rail" : "virtual",
         xMm: 160 + sequence * 16,
         yMm: definition.mechanical.mount === "din-rail" ? 0 : 120
+      }
+    ]
+  };
+}
+
+export function addConductor(model: CircuitModel, input: AddConductorInput): CircuitModel {
+  const fromComponent = model.components.find((component) => component.id === input.fromComponentId);
+  const toComponent = model.components.find((component) => component.id === input.toComponentId);
+
+  if (!fromComponent) {
+    throw new Error(`Invalid source component: ${input.fromComponentId}`);
+  }
+  if (!toComponent) {
+    throw new Error(`Invalid target component: ${input.toComponentId}`);
+  }
+
+  const fromDefinition = findDefinition(fromComponent.definitionId);
+  const toDefinition = findDefinition(toComponent.definitionId);
+  const hasSourceTerminal = fromDefinition.terminals.some((terminal) => terminal.id === input.fromTerminal);
+  const hasTargetTerminal = toDefinition.terminals.some((terminal) => terminal.id === input.toTerminal);
+
+  if (!hasSourceTerminal) {
+    throw new Error(`Invalid source terminal: ${fromComponent.reference}:${input.fromTerminal}`);
+  }
+  if (!hasTargetTerminal) {
+    throw new Error(`Invalid target terminal: ${toComponent.reference}:${input.toTerminal}`);
+  }
+
+  const net = input.net.trim();
+  if (!net) {
+    throw new Error("Net name is required");
+  }
+
+  const nextIndex = model.conductors.length + 1;
+  return {
+    ...model,
+    conductors: [
+      ...model.conductors,
+      {
+        id: `w${nextIndex}`,
+        from: input.fromComponentId,
+        fromTerminal: input.fromTerminal,
+        to: input.toComponentId,
+        toTerminal: input.toTerminal,
+        net
       }
     ]
   };
