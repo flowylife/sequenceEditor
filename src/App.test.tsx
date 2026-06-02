@@ -295,6 +295,26 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText("Unsaved local changes")).toBeInTheDocument();
   });
 
+  it("adds conductor ampacity metadata and validates undersized wiring", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Target component"), { target: { value: "c-hl1" } });
+    fireEvent.change(screen.getByLabelText("Source terminal"), { target: { value: "A2" } });
+    fireEvent.change(screen.getByLabelText("Target terminal"), { target: { value: "X1" } });
+    fireEvent.change(screen.getByLabelText("Net name"), { target: { value: "START-LATCH" } });
+    fireEvent.change(screen.getByLabelText("Wire ampacity amps"), { target: { value: "0.1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Add conductor/i }));
+
+    expect(screen.getByText("0.10 A ampacity")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    expect(screen.getByText("CONDUCTOR_AMPACITY_MARGIN")).toBeInTheDocument();
+    expect(screen.getByText(/0\.10 A ampacity/i)).toBeInTheDocument();
+    expect(screen.getByText(/0\.54 A branch load/i)).toBeInTheDocument();
+  });
+
   it("surfaces a supply-reference short created through terminal wiring", () => {
     render(<App />);
 

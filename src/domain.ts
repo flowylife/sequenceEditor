@@ -66,6 +66,7 @@ export interface Conductor {
   to: string;
   toTerminal: string;
   net: string;
+  ampacityA?: number;
 }
 
 export interface AddConductorInput {
@@ -74,6 +75,7 @@ export interface AddConductorInput {
   toComponentId: string;
   toTerminal: string;
   net: string;
+  ampacityA?: number;
 }
 
 export interface UpdateComponentReferenceInput {
@@ -233,6 +235,7 @@ export interface ElectricalLoadBranch {
   description: string;
   componentIds: string[];
   path: string[];
+  activeNet: string;
   requiredVoltageVac: number;
   designCurrentA: number;
   liveCurrentA: number;
@@ -860,6 +863,36 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
       suggestedFix: "Select devices with higher ratings, split the branch load, or revise the sequence circuit topology."
     });
   }
+
+  for (const branch of electricalAnalysis.branches) {
+    for (const conductor of model.conductors.filter((item) => item.net === branch.activeNet && item.ampacityA !== undefined)) {
+      const ampacityA = Number(conductor.ampacityA);
+      if (!Number.isFinite(ampacityA) || ampacityA <= 0) {
+        findings.push({
+          id: `conductor-ampacity-invalid-${conductor.id}`,
+          severity: "error",
+          ruleId: "CONDUCTOR_AMPACITY_SETTING_RANGE",
+          affectedObjectIds: [conductor.id, conductor.from, conductor.to],
+          title: `${conductor.id} conductor ampacity is invalid`,
+          explanation: "Conductor ampacity must be greater than 0 A when it is provided for branch load validation.",
+          suggestedFix: "Enter the conductor ampacity from the wire schedule or remove the value until the wire is specified."
+        });
+        continue;
+      }
+
+      if (ampacityA < branch.designCurrentA) {
+        findings.push({
+          id: `conductor-ampacity-${conductor.id}`,
+          severity: "warning",
+          ruleId: "CONDUCTOR_AMPACITY_MARGIN",
+          affectedObjectIds: [conductor.id, conductor.from, conductor.to],
+          title: `${conductor.id} conductor ampacity is below ${branch.label} load`,
+          explanation: `${conductor.id} on ${conductor.net} is specified at ${ampacityA.toFixed(2)} A ampacity against ${branch.designCurrentA.toFixed(2)} A branch load.`,
+          suggestedFix: "Increase wire ampacity, split the branch load, or revise the circuit so the conductor is not undersized."
+        });
+      }
+    }
+  }
   return findings;
 }
 
@@ -1014,6 +1047,7 @@ export function analyzeElectricalPaths(model: CircuitModel, snapshot?: Simulatio
       description: input.description,
       componentIds: componentIdsFor([...input.path, ...input.contactReferences, ...input.loadReferences]),
       path: input.path,
+      activeNet: input.activeNet,
       requiredVoltageVac: supplyVoltageVac,
       designCurrentA,
       liveCurrentA,
@@ -1555,6 +1589,10 @@ export function addConductor(model: CircuitModel, input: AddConductorInput): Cir
   if (!net) {
     throw new Error("Net name is required");
   }
+  const ampacityA = input.ampacityA === undefined ? undefined : Number(input.ampacityA);
+  if (ampacityA !== undefined && (!Number.isFinite(ampacityA) || ampacityA <= 0)) {
+    throw new Error("Wire ampacity must be greater than 0 A");
+  }
 
   const nextIndex = model.conductors.length + 1;
   return {
@@ -1567,7 +1605,8 @@ export function addConductor(model: CircuitModel, input: AddConductorInput): Cir
         fromTerminal: input.fromTerminal,
         to: input.toComponentId,
         toTerminal: input.toTerminal,
-        net
+        net,
+        ...(ampacityA === undefined ? {} : { ampacityA })
       }
     ]
   };

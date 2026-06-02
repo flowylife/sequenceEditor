@@ -412,6 +412,25 @@ describe("electrical sequence domain", () => {
     expect(findings.some((finding) => finding.ruleId === "PROTECTIVE_DEVICE_MARGIN" && finding.affectedObjectIds.includes("c-hl1"))).toBe(true);
   });
 
+  it("flags conductors whose ampacity is below branch design current", () => {
+    const project = createStarterProject();
+    const undersized = {
+      ...project.model,
+      conductors: project.model.conductors.map((conductor) => (conductor.id === "w7" ? { ...conductor, ampacityA: 0.01 } : conductor))
+    };
+
+    const findings = validateCircuit(undersized);
+    const finding = findings.find((item) => item.ruleId === "CONDUCTOR_AMPACITY_MARGIN");
+
+    expect(finding).toMatchObject({
+      severity: "warning",
+      title: "w7 conductor ampacity is below Timer output branch load"
+    });
+    expect(finding?.affectedObjectIds).toEqual(expect.arrayContaining(["w7", "c-y0", "c-hl1"]));
+    expect(finding?.explanation).toContain("0.01 A ampacity");
+    expect(finding?.explanation).toContain("0.03 A branch load");
+  });
+
   it("builds a mechanical panel layout with rail warnings and device envelopes", () => {
     const project = createStarterProject();
     const panelLayout = buildPanelLayout(project.model);

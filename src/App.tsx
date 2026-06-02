@@ -1157,6 +1157,7 @@ function SpecsPanel({
   const targetDefinition = findDefinition(targetComponent.definitionId);
   const [targetTerminal, setTargetTerminal] = useState(targetDefinition.terminals[0]?.id ?? "");
   const [netName, setNetName] = useState(`${component.reference}-${targetComponent.reference}`);
+  const [wireAmpacityA, setWireAmpacityA] = useState(1);
   const [wiringError, setWiringError] = useState<string | null>(null);
   const selectedConductors = conductors.filter((conductor) => conductor.from === component.id || conductor.to === component.id);
   const referenceById = new Map(components.map((item) => [item.id, item.reference]));
@@ -1185,7 +1186,8 @@ function SpecsPanel({
         fromTerminal: sourceTerminal,
         toComponentId: targetComponent.id,
         toTerminal: targetTerminal,
-        net: netName
+        net: netName,
+        ampacityA: wireAmpacityA
       });
       setWiringError(null);
     } catch (error) {
@@ -1392,6 +1394,22 @@ function SpecsPanel({
             <span>Net name</span>
             <input aria-label="Net name" value={netName} onChange={(event) => setNetName(event.target.value)} />
           </label>
+          <label>
+            <span>Ampacity</span>
+            <input
+              aria-label="Wire ampacity amps"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={wireAmpacityA}
+              onChange={(event) => {
+                const nextValue = Number(event.target.value);
+                if (Number.isFinite(nextValue)) {
+                  setWireAmpacityA(nextValue);
+                }
+              }}
+            />
+          </label>
         </div>
         <button type="button" onClick={submitConductor}>Add conductor</button>
       </div>
@@ -1407,6 +1425,7 @@ function SpecsPanel({
                   {referenceById.get(conductor.from)}:{conductor.fromTerminal} -&gt; {referenceById.get(conductor.to)}:{conductor.toTerminal}
                 </b>
                 <small>{conductor.net}</small>
+                {conductor.ampacityA !== undefined && <small>{conductor.ampacityA.toFixed(2)} A ampacity</small>}
               </div>
               <button type="button" className="conductor-remove" aria-label={`Remove conductor ${conductor.id}`} onClick={() => onRemoveConductor(conductor.id)}>
                 Remove
