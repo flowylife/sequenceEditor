@@ -1241,6 +1241,29 @@ function SpecsPanel({
             </dd>
           </div>
         )}
+        {definition.kind === "load" && (
+          <div>
+            <dt>Design current</dt>
+            <dd>
+              <input
+                aria-label="Load design current amps"
+                className="reference-input"
+                type="number"
+                min="0.001"
+                max="20"
+                step="0.01"
+                value={Number(component.settings?.designCurrentA ?? definition.ratings.ratedCurrentA ?? 0.03)}
+                onChange={(event) => {
+                  const nextValue = Number(event.target.value);
+                  if (Number.isFinite(nextValue)) {
+                    onUpdateSetting(component.id, "designCurrentA", nextValue);
+                  }
+                }}
+              />
+              <small className="field-hint">A · used for load and protection checks</small>
+            </dd>
+          </div>
+        )}
       </dl>
       <div className="terminal-list">
         <strong>Terminal map</strong>
@@ -1481,6 +1504,10 @@ function SimulationPanel({
                 <div>
                   <dt>Contact</dt>
                   <dd>{branch.weakestContactRatingA ? `${branch.weakestContactRatingA.toFixed(1)} A` : "n/a"}</dd>
+                </div>
+                <div>
+                  <dt>Protective</dt>
+                  <dd>{branch.protectiveRatingA ? `${branch.protectiveRatingA.toFixed(1)} A` : "n/a"}</dd>
                 </div>
                 <div>
                   <dt>Margin</dt>

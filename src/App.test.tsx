@@ -344,6 +344,24 @@ describe("Sequence Editor app", () => {
     expect(screen.getByLabelText("Timer progress")).toHaveStyle({ width: "100%" });
   });
 
+  it("lets the operator edit a load current and surfaces protective-device margin", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText(/HL1 pilot lamp/i));
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Load design current amps"), { target: { value: "2.4" } });
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    expect(screen.getByText("PROTECTIVE_DEVICE_MARGIN")).toBeInTheDocument();
+    expect(screen.getByText(/Timer output branch has insufficient electrical margin/i)).toBeInTheDocument();
+    expect(screen.getByText(/2\.40 A with -0\.40 A margin/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^simulation$/i }));
+
+    expect(screen.getAllByText("Protective").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2.0 A").length).toBeGreaterThan(0);
+  });
+
   it("keeps the wiring terminal options aligned with the selected component", () => {
     render(<App />);
 

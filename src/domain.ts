@@ -642,6 +642,21 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
         });
       }
     }
+
+    if (definition.kind === "load" && component.settings?.designCurrentA !== undefined) {
+      const designCurrentA = Number(component.settings.designCurrentA);
+      if (!Number.isFinite(designCurrentA) || designCurrentA <= 0 || designCurrentA > 20) {
+        findings.push({
+          id: `load-current-${component.id}`,
+          severity: "error",
+          ruleId: "LOAD_CURRENT_SETTING_RANGE",
+          affectedObjectIds: [component.id],
+          title: `${component.reference} load current is outside the supported range`,
+          explanation: "Editable load current must be greater than 0 A and no more than 20 A for this rule-based control-circuit simulator.",
+          suggestedFix: "Set the load design current to the selected part datasheet value, then rerun validation."
+        });
+      }
+    }
   }
 
   const coilOwnerReferences = new Set(
@@ -956,10 +971,7 @@ export function analyzeElectricalPaths(model: CircuitModel, snapshot?: Simulatio
   const loadCurrent = (reference: string) => {
     const component = componentByReference.get(reference);
     if (!component) return 0;
-    const ratings = findDefinition(component.definitionId).ratings;
-    if (ratings.ratedCurrentA) return ratings.ratedCurrentA;
-    if (ratings.burdenVa) return ratings.burdenVa / supplyVoltageVac;
-    return 0;
+    return getComponentDesignCurrentA(component, supplyVoltageVac);
   };
 
   const makeBranch = (input: {
@@ -1191,7 +1203,11 @@ export function simulateStep(
     }
   }
 
-  const loadCurrent = hasHardFault ? 0 : relayEnergized ? 0.25 + (plcOutputEnergized ? 0.03 : 0) : 0;
+  const relayComponent = getComponentByReference(model, "K1");
+  const lampComponent = getComponentByReference(model, "HL1");
+  const relayCurrentA = relayComponent ? getComponentDesignCurrentA(relayComponent, 24) : 0;
+  const lampCurrentA = lampComponent ? getComponentDesignCurrentA(lampComponent, 24) : 0;
+  const liveCurrentA = hasHardFault ? 0 : relayEnergized ? relayCurrentA + (plcOutputEnergized ? lampCurrentA : 0) : 0;
   return {
     step,
     timestampMs: step * 250,
@@ -1203,15 +1219,26 @@ export function simulateStep(
     blockingReason,
     componentStates,
     readings: [
-      { id: "r-control", label: "Control supply", voltageVac: 24, currentA: loadCurrent },
-      { id: "r-k1", label: "K1 coil", voltageVac: relayEnergized ? 24 : 0, currentA: relayEnergized ? 0.25 : 0 },
-      { id: "r-y0", label: "PLC Y0", voltageVac: plcOutputEnergized ? 24 : 0, currentA: plcOutputEnergized ? 0.03 : 0 }
+      { id: "r-control", label: "Control supply", voltageVac: 24, currentA: liveCurrentA },
+      { id: "r-k1", label: "K1 coil", voltageVac: relayEnergized ? 24 : 0, currentA: relayEnergized ? relayCurrentA : 0 },
+      { id: "r-y0", label: "PLC Y0", voltageVac: plcOutputEnergized ? 24 : 0, currentA: plcOutputEnergized ? lampCurrentA : 0 }
     ]
   };
 }
 
 function getComponentByReference(model: CircuitModel, reference: string): CircuitComponent | undefined {
   return model.components.find((component) => component.reference === reference);
+}
+
+function getComponentDesignCurrentA(component: CircuitComponent, supplyVoltageVac: number): number {
+  const definition = findDefinition(component.definitionId);
+  const designCurrentA = Number(component.settings?.designCurrentA);
+  if (definition.kind === "load" && Number.isFinite(designCurrentA) && designCurrentA > 0) {
+    return designCurrentA;
+  }
+  if (definition.ratings.ratedCurrentA) return definition.ratings.ratedCurrentA;
+  if (definition.ratings.burdenVa) return definition.ratings.burdenVa / supplyVoltageVac;
+  return 0;
 }
 
 function getState(component: CircuitComponent | undefined, snapshot?: SimulationSnapshot) {

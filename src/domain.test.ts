@@ -392,6 +392,25 @@ describe("electrical sequence domain", () => {
     }
   });
 
+  it("uses edited load design current when checking protective-device margin", () => {
+    const project = createStarterProject();
+    const overloadedLamp = updateComponentSetting(project.model, {
+      componentId: "c-hl1",
+      key: "designCurrentA",
+      value: 2.4
+    });
+
+    const analysis = analyzeElectricalPaths(overloadedLamp);
+    const timerBranch = analysis.branches.find((branch) => branch.id === "timer-plc-output");
+    const findings = validateCircuit(overloadedLamp);
+
+    expect(timerBranch?.designCurrentA).toBeCloseTo(2.4, 2);
+    expect(timerBranch?.protectiveRatingA).toBe(2);
+    expect(timerBranch?.marginA).toBeCloseTo(-0.4, 2);
+    expect(timerBranch?.status).toBe("warning");
+    expect(findings.some((finding) => finding.ruleId === "PROTECTIVE_DEVICE_MARGIN" && finding.affectedObjectIds.includes("c-hl1"))).toBe(true);
+  });
+
   it("builds a mechanical panel layout with rail warnings and device envelopes", () => {
     const project = createStarterProject();
     const panelLayout = buildPanelLayout(project.model);
