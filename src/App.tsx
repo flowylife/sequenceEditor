@@ -48,6 +48,7 @@ import {
   findDefinition,
   simulateStep,
   summarizeFindings,
+  updateComponentReference,
   validateCircuit,
   type CircuitComponent,
   type CircuitModel,
@@ -346,6 +347,13 @@ function App() {
     setValidationError(null);
     commitModel(next);
     setSelectedId(input.fromComponentId);
+  };
+
+  const updateSelectedReference = (componentId: string, reference: string) => {
+    const next = updateComponentReference(model, { componentId, reference });
+    setValidationError(null);
+    commitModel(next);
+    setSelectedId(componentId);
   };
 
   const loadEmptyProject = () => {
@@ -656,12 +664,14 @@ function App() {
                 </div>
                 {inspectorTab === "specs" && selectedComponent && selectedDefinition && (
                   <SpecsPanel
+                    key={selectedComponent.id}
                     component={selectedComponent}
                     definition={selectedDefinition}
                     placement={selectedPlacement}
                     components={model.components}
                     conductors={model.conductors}
                     onAddConductor={addManualConductor}
+                    onUpdateReference={updateSelectedReference}
                   />
                 )}
                 {inspectorTab === "validation" && (
@@ -714,8 +724,8 @@ function SchematicWorkspace({
               <circle cx="3" cy="3" r="2.4" fill="#172033" />
             </marker>
           </defs>
-          <rect width="1040" height="650" fill="#fbfdff" />
-          <rect width="1040" height="650" fill="url(#schematic-grid)" />
+          <rect className="schematic-background" aria-hidden="true" width="1040" height="650" fill="#fbfdff" />
+          <rect className="schematic-background" aria-hidden="true" width="1040" height="650" fill="url(#schematic-grid)" />
           {Array.from({ length: 12 }, (_, index) => (
             <text key={index} x={120 + index * 70} y="34" className="grid-label">{index + 1}</text>
           ))}
@@ -831,6 +841,7 @@ function SchematicContact({
 }) {
   return (
     <g className={`schematic-symbol ${closed ? "is-hot" : ""} ${selected ? "is-selected" : ""}`} onClick={onSelect} tabIndex={0} role="button" aria-label={`${reference} ${label}`}>
+      <rect className="schematic-hit-area" x={x - 18} y={y - 38} width="86" height="82" rx="8" />
       <line x1={x} y1={y - 22} x2={x} y2={y + 22} />
       <line x1={x + 50} y1={y - 22} x2={x + 50} y2={y + 22} />
       <line x1={x - 18} y1={y} x2={x} y2={y} />
@@ -1073,7 +1084,8 @@ function SpecsPanel({
   placement,
   components,
   conductors,
-  onAddConductor
+  onAddConductor,
+  onUpdateReference
 }: {
   component: CircuitComponent;
   definition: ComponentDefinition;
@@ -1081,6 +1093,7 @@ function SpecsPanel({
   components: CircuitComponent[];
   conductors: CircuitModel["conductors"];
   onAddConductor: (input: AddConductorInput) => void;
+  onUpdateReference: (componentId: string, reference: string) => void;
 }) {
   const firstTarget = components.find((item) => item.id !== component.id) ?? component;
   const [sourceTerminal, setSourceTerminal] = useState(definition.terminals[0]?.id ?? "");
@@ -1127,6 +1140,21 @@ function SpecsPanel({
         </div>
       </div>
       <dl className="spec-grid">
+        <div>
+          <dt>Reference</dt>
+          <dd>
+            <input
+              aria-label="Reference designation"
+              className="reference-input"
+              value={component.reference}
+              onChange={(event) => {
+                if (event.target.value.trim()) {
+                  onUpdateReference(component.id, event.target.value);
+                }
+              }}
+            />
+          </dd>
+        </div>
         <div>
           <dt>Rated voltage</dt>
           <dd>{definition.ratings.ratedVoltageVac ?? definition.ratings.coilVoltageVac ?? 24} VAC</dd>

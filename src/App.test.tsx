@@ -45,6 +45,25 @@ describe("Sequence Editor app", () => {
     expect(screen.getByRole("button", { name: /Show graph CAD view/i })).toBeInTheDocument();
   });
 
+  it("keeps schematic background layers non-interactive so symbols remain selectable", () => {
+    render(<App />);
+
+    const backgroundLayers = document.querySelectorAll(".schematic-background");
+
+    expect(backgroundLayers).toHaveLength(2);
+    backgroundLayers.forEach((layer) => {
+      expect(layer).toHaveAttribute("aria-hidden", "true");
+    });
+  });
+
+  it("renders transparent schematic symbol hit areas for pointer selection", () => {
+    render(<App />);
+
+    const sealInContact = screen.getByLabelText(/K1\.13 Seal-in NO/i);
+
+    expect(sealInContact.querySelector(".schematic-hit-area")).toBeInTheDocument();
+  });
+
   it("shows an empty state and validation error for an empty project", () => {
     render(<App />);
 
@@ -220,6 +239,19 @@ describe("Sequence Editor app", () => {
     expect(summary).toHaveClass("has-error");
     expect(screen.getByText("SUPPLY_REFERENCE_SHORT")).toBeInTheDocument();
     expect(screen.getByText(/Control supply is shorted to reference/i)).toBeInTheDocument();
+  });
+
+  it("surfaces an unbound relay auxiliary contact edited from the inspector", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText(/K1\.13 Seal-in NO/i));
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.change(screen.getByLabelText("Reference designation"), { target: { value: "K2.13" } });
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    expect(screen.getByText("CONTACT_COIL_BINDING")).toBeInTheDocument();
+    expect(screen.getByText(/Auxiliary contact is not bound to a coil/i)).toBeInTheDocument();
+    expect(screen.getByText(/K2\.13 references K2/i)).toBeInTheDocument();
   });
 
   it("keeps the wiring terminal options aligned with the selected component", () => {

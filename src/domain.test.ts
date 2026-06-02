@@ -175,6 +175,20 @@ describe("electrical sequence domain", () => {
     expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "SUPPLY_REFERENCE_SHORT")).toBe(true);
   });
 
+  it("flags an auxiliary contact that is not bound to a matching relay coil", () => {
+    const project = createStarterProject();
+    const unboundContact = {
+      ...project.model,
+      components: project.model.components.map((component) =>
+        component.id === "c-k1a" ? { ...component, reference: "K2.13" } : component
+      )
+    };
+
+    const findings = validateCircuit(unboundContact);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "CONTACT_COIL_BINDING")).toBe(true);
+  });
+
   it("checks simple DIN rail mechanical clearance", () => {
     const project = createStarterProject();
     const findings = validatePanelFit(project.model);

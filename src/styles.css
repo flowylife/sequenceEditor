@@ -397,6 +397,10 @@ button {
   height: auto;
 }
 
+.schematic-background {
+  pointer-events: none;
+}
+
 .schematic-title {
   fill: #172033;
   font-size: 16px;
@@ -476,6 +480,14 @@ button {
 
 .schematic-symbol.is-selected .component-ref {
   fill: #a15c07;
+}
+
+.schematic-symbol .schematic-hit-area,
+.schematic-symbol.is-hot .schematic-hit-area,
+.schematic-symbol.is-selected .schematic-hit-area {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
 }
 
 .legend-hot {
@@ -1253,6 +1265,18 @@ button {
   color: #111827;
   font-size: 12px;
   font-weight: 800;
+}
+
+.reference-input {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #cfdbe8;
+  border-radius: 7px;
+  color: #111827;
+  background: #f8fbff;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .terminal-list,

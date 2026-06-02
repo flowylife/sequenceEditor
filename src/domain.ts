@@ -76,6 +76,11 @@ export interface AddConductorInput {
   net: string;
 }
 
+export interface UpdateComponentReferenceInput {
+  componentId: string;
+  reference: string;
+}
+
 export interface PanelPlacement {
   componentId: string;
   rail: "control-rail" | "terminal-rail" | "virtual";
@@ -579,6 +584,35 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
         title: `${component.reference} coil voltage does not match the 24 VAC control profile`,
         explanation: "The selected IEC/KR profile expects 24 VAC control coils for this starter circuit.",
         suggestedFix: "Select a 24 VAC coil or change the project control-voltage profile."
+      });
+    }
+  }
+
+  const coilOwnerReferences = new Set(
+    model.components
+      .filter((component) => {
+        const definition = findDefinition(component.definitionId);
+        return definition.kind === "relay-coil" || definition.kind === "contactor" || definition.kind === "timer";
+      })
+      .map((component) => component.reference)
+  );
+
+  for (const component of model.components) {
+    const definition = findDefinition(component.definitionId);
+    if (definition.kind !== "relay-contact") {
+      continue;
+    }
+
+    const ownerReference = component.reference.split(".")[0]?.trim();
+    if (!ownerReference || !coilOwnerReferences.has(ownerReference)) {
+      findings.push({
+        id: `contact-owner-${component.id}`,
+        severity: "error",
+        ruleId: "CONTACT_COIL_BINDING",
+        affectedObjectIds: [component.id],
+        title: "Auxiliary contact is not bound to a coil",
+        explanation: `${component.reference} references ${ownerReference || "no relay owner"}, but no matching relay coil, timer, or contactor exists in the semantic model.`,
+        suggestedFix: "Rename the auxiliary contact to match an existing coil reference or add the missing relay/contactor coil."
       });
     }
   }
@@ -1243,6 +1277,23 @@ export function addConductor(model: CircuitModel, input: AddConductorInput): Cir
         net
       }
     ]
+  };
+}
+
+export function updateComponentReference(model: CircuitModel, input: UpdateComponentReferenceInput): CircuitModel {
+  const reference = input.reference.trim();
+  if (!reference) {
+    throw new Error("Reference designation is required");
+  }
+
+  const component = model.components.find((item) => item.id === input.componentId);
+  if (!component) {
+    throw new Error(`Invalid component: ${input.componentId}`);
+  }
+
+  return {
+    ...model,
+    components: model.components.map((item) => (item.id === input.componentId ? { ...item, reference } : item))
   };
 }
 
