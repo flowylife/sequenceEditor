@@ -105,7 +105,7 @@ describe("Sequence Editor app", () => {
   it("lets the operator reset, start, and stop the sequence simulation", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reset$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
 
     await waitFor(() => {
@@ -145,7 +145,7 @@ describe("Sequence Editor app", () => {
   it("lets the operator open LS1 and trips the sealed sequence", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reset$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^START$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
 
@@ -169,7 +169,7 @@ describe("Sequence Editor app", () => {
   it("lets the operator trip OL1 and de-energizes the run command", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reset$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^START$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
 
@@ -196,7 +196,7 @@ describe("Sequence Editor app", () => {
   it("lets the operator open FU1 and removes protected control voltage", async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reset$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^FUSE$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
 
@@ -211,6 +211,55 @@ describe("Sequence Editor app", () => {
     const stopSignalRow = screen.getAllByText("SB0 STOP").map((item) => item.closest(".signal-row")).find(Boolean);
     expect(stopSignalRow).toHaveTextContent("0 V");
     expect(stopSignalRow).toHaveTextContent("off");
+  });
+
+  it("saves and reapplies a simulation input preset through the API", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/projects/project-seq-001/simulation-presets")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                data: {
+                  id: "preset-fuse-open",
+                  projectId: "project-seq-001",
+                  name: "Saved simulation preset",
+                  inputs: {
+                    startPressed: false,
+                    stopPressed: false,
+                    limitClosed: true,
+                    overloadHealthy: true,
+                    controlFuseHealthy: false
+                  },
+                  createdAt: new Date().toISOString()
+                }
+              })
+          });
+        }
+        return Promise.reject(new Error("offline api"));
+      })
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Reset$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^FUSE$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Save simulation preset/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Preset saved from API")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^FUSE$/i }));
+    expect(screen.getByText("FUSE closed")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Apply saved preset/i }));
+
+    expect(screen.getByText("FUSE open")).toBeInTheDocument();
+    expect(screen.getByText("Applied Saved simulation preset")).toBeInTheDocument();
   });
 
   it("saves the current project revision through the API", async () => {

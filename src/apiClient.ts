@@ -1,4 +1,11 @@
-import type { CircuitModel, CircuitProject, SimulationInputs, SimulationSnapshot, ValidationFinding } from "./domain";
+import type {
+  CircuitModel,
+  CircuitProject,
+  SimulationInputs,
+  SimulationPreset,
+  SimulationSnapshot,
+  ValidationFinding
+} from "./domain";
 
 const API_BASE_URL =
   (import.meta as ImportMeta & { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL ?? "http://127.0.0.1:8787/api";
@@ -71,5 +78,15 @@ export async function simulateModelStep(
   return requestJson<SimulationSnapshot>("/simulate/step", {
     method: "POST",
     body: JSON.stringify({ model, previous, inputs })
+  });
+}
+
+export async function saveSimulationPreset(
+  projectId: string,
+  input: { name: string; inputs: SimulationInputs }
+): Promise<SimulationPreset> {
+  return requestJson<SimulationPreset>(`/projects/${projectId}/simulation-presets`, {
+    method: "POST",
+    body: JSON.stringify(input)
   });
 }

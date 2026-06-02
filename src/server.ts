@@ -8,13 +8,15 @@ import {
   simulateStep,
   validateCircuit,
   type CircuitModel,
-  type CircuitProject
+  type CircuitProject,
+  type SimulationPreset
 } from "./domain";
 
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
 const pool = process.env.DATABASE_URL ? new pg.Pool({ connectionString: process.env.DATABASE_URL }) : undefined;
 const memoryProjects = new Map<string, CircuitProject>();
+const memorySimulationPresets = new Map<string, SimulationPreset[]>();
 
 memoryProjects.set("project-seq-001", createStarterProject());
 
@@ -25,6 +27,19 @@ const projectInputSchema = z.object({
   name: z.string().min(1),
   model: z.custom<CircuitModel>(),
   standardsProfile: z.literal("IEC_KR_INDUSTRIAL").default("IEC_KR_INDUSTRIAL")
+});
+
+const simulationInputsSchema = z.object({
+  startPressed: z.boolean(),
+  stopPressed: z.boolean(),
+  limitClosed: z.boolean(),
+  overloadHealthy: z.boolean(),
+  controlFuseHealthy: z.boolean()
+});
+
+const simulationPresetInputSchema = z.object({
+  name: z.string().min(1),
+  inputs: simulationInputsSchema
 });
 
 async function ensureSchema() {
@@ -44,6 +59,13 @@ async function ensureSchema() {
       project_id text,
       created_at timestamptz not null default now(),
       findings jsonb not null
+    );
+    create table if not exists simulation_presets (
+      id text primary key,
+      project_id text not null,
+      name text not null,
+      inputs jsonb not null,
+      created_at timestamptz not null
     );
   `);
 }
@@ -96,6 +118,23 @@ async function loadProject(id: string) {
     updatedAt: row.updated_at.toISOString(),
     model: row.model
   } satisfies CircuitProject;
+}
+
+async function saveSimulationPresetRecord(preset: SimulationPreset) {
+  if (!pool) {
+    const items = memorySimulationPresets.get(preset.projectId) ?? [];
+    memorySimulationPresets.set(preset.projectId, [preset, ...items].slice(0, 20));
+    return preset;
+  }
+
+  await pool.query(
+    `
+      insert into simulation_presets (id, project_id, name, inputs, created_at)
+      values ($1, $2, $3, $4, $5)
+    `,
+    [preset.id, preset.projectId, preset.name, JSON.stringify(preset.inputs), preset.createdAt]
+  );
+  return preset;
 }
 
 app.get("/api/health", (_request, response) => {
@@ -159,6 +198,29 @@ app.post("/api/projects/:id/revisions", async (request, response) => {
     model
   };
   response.json({ data: await saveProject(nextProject) });
+});
+
+app.post("/api/projects/:id/simulation-presets", async (request, response) => {
+  const existing = await loadProject(request.params.id);
+  if (!existing) {
+    response.status(404).json({ error: "project_not_found" });
+    return;
+  }
+
+  const parsed = simulationPresetInputSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: "invalid_simulation_preset", details: parsed.error.flatten() });
+    return;
+  }
+
+  const preset: SimulationPreset = {
+    id: `preset-${Date.now()}`,
+    projectId: existing.id,
+    name: parsed.data.name,
+    inputs: parsed.data.inputs,
+    createdAt: new Date().toISOString()
+  };
+  response.status(201).json({ data: await saveSimulationPresetRecord(preset) });
 });
 
 app.post("/api/validate", async (request, response) => {

@@ -137,6 +137,14 @@ export interface SimulationInputs {
   controlFuseHealthy: boolean;
 }
 
+export interface SimulationPreset {
+  id: string;
+  projectId: string;
+  name: string;
+  inputs: SimulationInputs;
+  createdAt: string;
+}
+
 export interface SimulationSnapshot {
   step: number;
   timestampMs: number;

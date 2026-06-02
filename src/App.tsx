@@ -66,10 +66,18 @@ import {
   type PanelLayoutModel,
   type PanelPlacement,
   type SimulationInputs,
+  type SimulationPreset,
   type SimulationSnapshot,
   type ValidationFinding
 } from "./domain";
-import { createProject, loadProject, saveProjectRevision, simulateModelStep, validateModel } from "./apiClient";
+import {
+  createProject,
+  loadProject,
+  saveProjectRevision,
+  saveSimulationPreset,
+  simulateModelStep,
+  validateModel
+} from "./apiClient";
 
 interface CircuitNodeData extends Record<string, unknown> {
   component: CircuitComponent;
@@ -222,6 +230,7 @@ function App() {
   const initialSnapshot = useMemo(() => simulateStep(starterProject.model, undefined, initialSimulationInputs), [starterProject.model]);
   const [snapshot, setSnapshot] = useState<SimulationSnapshot | undefined>(initialSnapshot);
   const [simulationHistory, setSimulationHistory] = useState<SimulationSnapshot[]>([initialSnapshot]);
+  const [savedPreset, setSavedPreset] = useState<SimulationPreset | undefined>();
   const [history, setHistory] = useState<CircuitModel[]>([starterProject.model]);
   const [projectId, setProjectId] = useState<string | undefined>(starterProject.id);
   const [activeRevision, setActiveRevision] = useState(starterProject.activeRevision);
@@ -360,6 +369,49 @@ function App() {
     setSyncMessage("Simulation input state changed");
   };
 
+  const savePreset = async () => {
+    const localPreset: SimulationPreset = {
+      id: `preset-local-${Date.now()}`,
+      projectId: projectId ?? "local-project",
+      name: "Saved simulation preset",
+      inputs: simulationInputs,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!projectId) {
+      setSavedPreset(localPreset);
+      setSyncStatus("local");
+      setSyncMessage("Preset saved locally");
+      return;
+    }
+
+    try {
+      setSyncStatus("saving");
+      setSyncMessage("Saving simulation preset");
+      const preset = await saveSimulationPreset(projectId, {
+        name: "Saved simulation preset",
+        inputs: simulationInputs
+      });
+      setSavedPreset(preset);
+      setSyncStatus("saved");
+      setSyncMessage("Preset saved from API");
+    } catch {
+      setSavedPreset(localPreset);
+      setSyncStatus("api-fallback");
+      setSyncMessage("API unavailable; preset saved locally");
+    }
+  };
+
+  const applyPreset = () => {
+    if (!savedPreset) return;
+    setSimulationInputs(savedPreset.inputs);
+    setSnapshot(undefined);
+    setSimulationHistory([]);
+    setInspectorTab("simulation");
+    setSyncStatus("local");
+    setSyncMessage(`Applied ${savedPreset.name}`);
+  };
+
   const addCatalogPart = (definitionId: string) => {
     const next = addComponent(model, definitionId);
     setValidationError(null);
@@ -406,6 +458,7 @@ function App() {
     setProjectName("Untitled sequence project");
     setProjectId(undefined);
     setActiveRevision(0);
+    setSavedPreset(undefined);
     commitModel(emptyModel);
     setSelectedId(undefined);
     setSnapshot(undefined);
@@ -422,6 +475,7 @@ function App() {
       setProjectName(project.name);
       setProjectId(project.id);
       setActiveRevision(project.activeRevision);
+      setSavedPreset(undefined);
       setHistory([project.model]);
       setModel(project.model);
       setSelectedId(getDefaultSelectedComponentId(project.model));
@@ -440,6 +494,7 @@ function App() {
       setProjectName(next.name);
       setProjectId(next.id);
       setActiveRevision(next.activeRevision);
+      setSavedPreset(undefined);
       setHistory([next.model]);
       setModel(next.model);
       setSelectedId(getDefaultSelectedComponentId(next.model));
@@ -682,9 +737,12 @@ function App() {
             history={simulationHistory}
             inputs={simulationInputs}
             timerDelayMs={timerDelayMs}
+            savedPreset={savedPreset}
             onInputsChange={updateSimulationInputs}
             onStep={stepSimulation}
             onReset={resetSimulation}
+            onSavePreset={savePreset}
+            onApplyPreset={applyPreset}
           />
           </section>
 
@@ -1626,17 +1684,23 @@ function SimulationStrip({
   history,
   inputs,
   timerDelayMs,
+  savedPreset,
   onInputsChange,
   onStep,
-  onReset
+  onReset,
+  onSavePreset,
+  onApplyPreset
 }: {
   snapshot?: SimulationSnapshot;
   history: SimulationSnapshot[];
   inputs: SimulationInputs;
   timerDelayMs: number;
+  savedPreset?: SimulationPreset;
   onInputsChange: (inputs: SimulationInputs) => void;
   onStep: () => void;
   onReset: () => void;
+  onSavePreset: () => void;
+  onApplyPreset: () => void;
 }) {
   const timerProgress = snapshot ? Math.min((snapshot.timerElapsedMs / timerDelayMs) * 100, 100) : 0;
   const timelineSteps = history.length > 0 ? history : snapshot ? [snapshot] : [];
@@ -1696,6 +1760,14 @@ function SimulationStrip({
           <RotateCcw size={16} />
           Reset
         </button>
+        <button type="button" onClick={onSavePreset} aria-label="Save simulation preset">
+          <Save size={16} />
+          Save preset
+        </button>
+        <button type="button" onClick={onApplyPreset} disabled={!savedPreset} aria-label="Apply saved preset">
+          <RotateCcw size={16} />
+          Apply preset
+        </button>
       </div>
       <div className="timeline">
         <span aria-label="Timer progress" style={{ width: `${timerProgress}%` }} />
@@ -1706,6 +1778,7 @@ function SimulationStrip({
         <span>STOP {inputs.stopPressed ? "open" : "closed"}</span>
         <span>LIMIT {inputs.limitClosed ? "closed" : "open"}</span>
         <span>OVERLOAD {inputs.overloadHealthy ? "healthy" : "tripped"}</span>
+        {savedPreset && <span>Preset {savedPreset.name}</span>}
         {snapshot?.blockingReason && <span>{snapshot.blockingReason}</span>}
         <span>Timer {snapshot ? `${snapshot.timerElapsedMs} ms` : "idle"}</span>
         {(snapshot?.readings ?? []).slice(0, 3).map((reading) => (

@@ -998,9 +998,14 @@ button {
 .simulation-strip {
   min-height: 146px;
   display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) minmax(260px, 0.8fr);
+  grid-template-columns: minmax(220px, 0.72fr) minmax(120px, 1fr) minmax(240px, 0.8fr);
   align-items: center;
   padding: 10px;
+}
+
+.strip-controls {
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .strip-controls button {
@@ -1044,6 +1049,7 @@ button {
 }
 
 .strip-readings {
+  min-width: 0;
   max-width: 420px;
   display: flex;
   flex-wrap: wrap;
