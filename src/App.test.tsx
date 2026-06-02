@@ -110,6 +110,11 @@ describe("Sequence Editor app", () => {
     });
     expect(screen.getByText("STOP open")).toBeInTheDocument();
     expect(screen.getAllByText(/K1 coil: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Simulation signal timeline")).toBeInTheDocument();
+    expect(screen.getByText("Active States (3)")).toBeInTheDocument();
+    expect(screen.getAllByText("K1 Coil").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("KT1 TON").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("HL1 Lamp").length).toBeGreaterThan(0);
   });
 
   it("saves the current project revision through the API", async () => {

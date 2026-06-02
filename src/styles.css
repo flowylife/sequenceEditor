@@ -271,7 +271,7 @@ button {
 .canvas-region {
   min-width: 0;
   display: grid;
-  grid-template-rows: 44px minmax(360px, 1fr) 64px;
+  grid-template-rows: 44px minmax(360px, 1fr) auto;
   gap: 10px;
 }
 
@@ -978,7 +978,10 @@ button {
 }
 
 .simulation-strip {
-  min-height: 64px;
+  min-height: 146px;
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) minmax(260px, 0.8fr);
+  align-items: center;
   padding: 10px;
 }
 
@@ -1037,6 +1040,105 @@ button {
   padding: 4px 6px;
   border-radius: 5px;
   background: #edf2f7;
+}
+
+.signal-monitor {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.46fr) minmax(360px, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 1px solid #e3e9f0;
+}
+
+.signal-table,
+.signal-timeline {
+  min-width: 0;
+  border: 1px solid #d7e1eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.signal-header,
+.signal-row,
+.timeline-row,
+.timeline-axis {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 70px 70px;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-bottom: 1px solid #edf2f7;
+  font-size: 10px;
+}
+
+.signal-header,
+.timeline-axis {
+  color: #667085;
+  background: #f8fbff;
+  font-weight: 800;
+}
+
+.signal-row:last-child,
+.timeline-row:last-child {
+  border-bottom: 0;
+}
+
+.signal-row span,
+.timeline-row > span {
+  color: #475467;
+  font-weight: 750;
+}
+
+.signal-row strong {
+  color: #172033;
+  font-weight: 850;
+}
+
+.signal-row em {
+  color: #667085;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.signal-row.is-active span,
+.signal-row.is-active strong,
+.signal-row.is-active em {
+  color: #047857;
+}
+
+.timeline-axis {
+  grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+  justify-items: end;
+  overflow: hidden;
+}
+
+.signal-timeline {
+  overflow: hidden;
+}
+
+.timeline-row {
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+.timeline-row > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22px, 1fr));
+  gap: 3px;
+}
+
+.timeline-row i {
+  height: 12px;
+  border-radius: 3px;
+  background: #e4ebf3;
+}
+
+.timeline-row i.is-active {
+  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12);
 }
 
 .tabs {
@@ -1299,9 +1401,13 @@ button {
   }
 
   .command-group,
-  .canvas-toolbar,
-  .simulation-strip {
+  .canvas-toolbar {
     flex-wrap: wrap;
+  }
+
+  .simulation-strip,
+  .signal-monitor {
+    grid-template-columns: 1fr;
   }
 
   .status-cluster,

@@ -148,6 +148,35 @@ function getFirstTerminal(definition: ComponentDefinition, preferred: "source" |
   return definition.terminals[0]?.id ?? "1";
 }
 
+const signalRows = [
+  { key: "start", label: "SB1 START" },
+  { key: "stop", label: "SB0 STOP" },
+  { key: "k1", label: "K1 Coil" },
+  { key: "seal", label: "K1 13-14" },
+  { key: "timer", label: "KT1 TON" },
+  { key: "y0", label: "Y0 Output" },
+  { key: "hl1", label: "HL1 Lamp" }
+] as const;
+
+function signalActive(snapshot: SimulationSnapshot, key: (typeof signalRows)[number]["key"]) {
+  switch (key) {
+    case "start":
+      return snapshot.inputs.startPressed;
+    case "stop":
+      return !snapshot.inputs.stopPressed;
+    case "k1":
+      return Object.entries(snapshot.componentStates).some(([componentId, state]) => componentId === "c-k1" && state === "energized");
+    case "seal":
+      return Object.entries(snapshot.componentStates).some(([componentId, state]) => componentId === "c-k1a" && state === "closed");
+    case "timer":
+      return snapshot.energizedNets.includes("TIMER-DONE");
+    case "y0":
+      return Object.entries(snapshot.componentStates).some(([componentId, state]) => componentId === "c-y0" && state === "energized");
+    case "hl1":
+      return Object.entries(snapshot.componentStates).some(([componentId, state]) => componentId === "c-hl1" && state === "energized");
+  }
+}
+
 function App() {
   const starterProject = useMemo(() => createStarterProject(), []);
   const reactFlowNodeTypes = useMemo(() => nodeTypes, []);
@@ -163,7 +192,9 @@ function App() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [remoteFindings, setRemoteFindings] = useState<ValidationFinding[] | undefined>();
   const [simulationInputs, setSimulationInputs] = useState<SimulationInputs>(initialSimulationInputs);
-  const [snapshot, setSnapshot] = useState<SimulationSnapshot | undefined>(() => simulateStep(starterProject.model, undefined, initialSimulationInputs));
+  const initialSnapshot = useMemo(() => simulateStep(starterProject.model, undefined, initialSimulationInputs), [starterProject.model]);
+  const [snapshot, setSnapshot] = useState<SimulationSnapshot | undefined>(initialSnapshot);
+  const [simulationHistory, setSimulationHistory] = useState<SimulationSnapshot[]>([initialSnapshot]);
   const [history, setHistory] = useState<CircuitModel[]>([starterProject.model]);
   const [projectId, setProjectId] = useState<string | undefined>(starterProject.id);
   const [activeRevision, setActiveRevision] = useState(starterProject.activeRevision);
@@ -186,6 +217,7 @@ function App() {
     setHistory((items) => [...items, nextModel].slice(-20));
     setModel(nextModel);
     setSnapshot(undefined);
+    setSimulationHistory([]);
     setRemoteFindings(undefined);
     setSyncStatus("local");
     setSyncMessage("Unsaved local changes");
@@ -269,11 +301,13 @@ function App() {
       setSyncMessage("Requesting simulation step from API");
       const next = await simulateModelStep(model, snapshot, simulationInputs);
       setSnapshot(next);
+      setSimulationHistory((items) => [...items, next].slice(-20));
       setSyncStatus("saved");
       setSyncMessage("Simulation step returned from API");
     } catch {
       const next = simulateStep(model, snapshot, simulationInputs);
       setSnapshot(next);
+      setSimulationHistory((items) => [...items, next].slice(-20));
       setSyncStatus("api-fallback");
       setSyncMessage("API unavailable; simulation stepped locally");
     }
@@ -281,6 +315,7 @@ function App() {
 
   const resetSimulation = () => {
     setSnapshot(undefined);
+    setSimulationHistory([]);
     setSimulationInputs({ startPressed: false, stopPressed: false });
     setInspectorTab("simulation");
   };
@@ -306,6 +341,7 @@ function App() {
     commitModel(emptyModel);
     setSelectedId(undefined);
     setSnapshot(undefined);
+    setSimulationHistory([]);
     setInspectorTab("validation");
   };
 
@@ -322,7 +358,11 @@ function App() {
       setModel(project.model);
       setSelectedId(project.model.components[4]?.id);
       setSimulationInputs(initialSimulationInputs);
-      setSnapshot(simulateStep(project.model, undefined, initialSimulationInputs));
+      {
+        const nextSnapshot = simulateStep(project.model, undefined, initialSimulationInputs);
+        setSnapshot(nextSnapshot);
+        setSimulationHistory([nextSnapshot]);
+      }
       setRemoteFindings(undefined);
       setValidationError(null);
       setSyncStatus("saved");
@@ -336,7 +376,11 @@ function App() {
       setModel(next.model);
       setSelectedId(next.model.components[4]?.id);
       setSimulationInputs(initialSimulationInputs);
-      setSnapshot(simulateStep(next.model, undefined, initialSimulationInputs));
+      {
+        const nextSnapshot = simulateStep(next.model, undefined, initialSimulationInputs);
+        setSnapshot(nextSnapshot);
+        setSimulationHistory([nextSnapshot]);
+      }
       setRemoteFindings(undefined);
       setValidationError(null);
       setSyncStatus("api-fallback");
@@ -365,6 +409,7 @@ function App() {
       setHistory([project.model]);
       setModel(project.model);
       setSnapshot(undefined);
+      setSimulationHistory([]);
       setRemoteFindings(undefined);
       setSyncStatus("saved");
       setSyncMessage(`Saved revision ${project.activeRevision}`);
@@ -380,6 +425,7 @@ function App() {
       const nextHistory = items.slice(0, -1);
       setModel(nextHistory[nextHistory.length - 1]);
       setSnapshot(undefined);
+      setSimulationHistory([]);
       return nextHistory;
     });
   };
@@ -565,6 +611,7 @@ function App() {
 
           <SimulationStrip
             snapshot={snapshot}
+            history={simulationHistory}
             inputs={simulationInputs}
             onInputsChange={updateSimulationInputs}
             onStep={stepSimulation}
@@ -1118,18 +1165,21 @@ function SimulationPanel({ snapshot, findings }: { snapshot?: SimulationSnapshot
 
 function SimulationStrip({
   snapshot,
+  history,
   inputs,
   onInputsChange,
   onStep,
   onReset
 }: {
   snapshot?: SimulationSnapshot;
+  history: SimulationSnapshot[];
   inputs: SimulationInputs;
   onInputsChange: (inputs: SimulationInputs) => void;
   onStep: () => void;
   onReset: () => void;
 }) {
   const timerProgress = snapshot ? Math.min((snapshot.timerElapsedMs / 3000) * 100, 100) : 0;
+  const timelineSteps = history.length > 0 ? history : snapshot ? [snapshot] : [];
   return (
     <div className="simulation-strip">
       <div className="strip-controls">
@@ -1171,6 +1221,52 @@ function SimulationStrip({
           <span key={reading.id}>{reading.label}: {reading.voltageVac.toFixed(0)} VAC / {reading.currentA.toFixed(2)} A</span>
         ))}
         {!snapshot && <span>Simulation idle</span>}
+      </div>
+      <div className="signal-monitor" aria-label="Simulation signal timeline">
+        <div className="signal-table">
+          <div className="signal-header">
+            <span>Active States ({timelineSteps.length})</span>
+            <span>Voltage</span>
+            <span>Current</span>
+          </div>
+          {signalRows.slice(0, 5).map((row) => {
+            const active = snapshot ? signalActive(snapshot, row.key) : false;
+            const reading =
+              row.key === "k1"
+                ? snapshot?.readings.find((item) => item.id === "r-k1")
+                : row.key === "y0" || row.key === "hl1"
+                  ? snapshot?.readings.find((item) => item.id === "r-y0")
+                  : undefined;
+            return (
+              <div key={row.key} className={`signal-row ${active ? "is-active" : ""}`}>
+                <span>{row.label}</span>
+                <strong>{reading ? `${reading.voltageVac.toFixed(0)} V` : active ? "24 V" : "0 V"}</strong>
+                <em>{reading ? `${reading.currentA.toFixed(2)} A` : active ? "on" : "off"}</em>
+              </div>
+            );
+          })}
+        </div>
+        <div className="signal-timeline">
+          <div className="timeline-axis">
+            {timelineSteps.map((item) => (
+              <span key={item.step}>{item.timestampMs / 1000}s</span>
+            ))}
+          </div>
+          {signalRows.map((row) => (
+            <div key={row.key} className="timeline-row">
+              <span>{row.label}</span>
+              <div>
+                {timelineSteps.map((item) => (
+                  <i
+                    key={`${row.key}-${item.step}`}
+                    className={signalActive(item, row.key) ? "is-active" : ""}
+                    title={`${row.label} step ${item.step}`}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
