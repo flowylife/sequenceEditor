@@ -479,7 +479,8 @@ export function createStarterProject(): CircuitProject {
         { id: "w6", from: "c-k1", fromTerminal: "A2", to: "c-kt1", toTerminal: "A2", net: "N24" },
         { id: "w7", from: "c-y0", fromTerminal: "Y0", to: "c-hl1", toTerminal: "X1", net: "PLC-Y0" },
         { id: "w8", from: "c-hl1", fromTerminal: "X2", to: "c-kt1", toTerminal: "A2", net: "N24" },
-        { id: "w9", from: "c-k1", fromTerminal: "A1", to: "c-kt1", toTerminal: "A1", net: "START-LATCH" }
+        { id: "w9", from: "c-k1", fromTerminal: "A1", to: "c-kt1", toTerminal: "A1", net: "START-LATCH" },
+        { id: "w10", from: "c-sb0", fromTerminal: "22", to: "c-k1a", toTerminal: "13", net: "STOP-CHAIN" }
       ],
       panelPlacements: [
         { componentId: "c-qf1", rail: "control-rail", xMm: 12, yMm: 0 },
@@ -617,6 +618,19 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
       })
       .map((component) => component.reference)
   );
+  const componentByReference = new Map(model.components.map((component) => [component.reference, component]));
+  const netsByTerminal = new Map<string, Set<string>>();
+  for (const conductor of model.conductors) {
+    for (const endpoint of [
+      { componentId: conductor.from, terminal: conductor.fromTerminal },
+      { componentId: conductor.to, terminal: conductor.toTerminal }
+    ]) {
+      const key = `${endpoint.componentId}:${endpoint.terminal}`;
+      const nets = netsByTerminal.get(key) ?? new Set<string>();
+      nets.add(conductor.net);
+      netsByTerminal.set(key, nets);
+    }
+  }
 
   for (const component of model.components) {
     const definition = findDefinition(component.definitionId);
@@ -634,6 +648,33 @@ export function validateCircuit(model: CircuitModel): ValidationFinding[] {
         title: "Auxiliary contact is not bound to a coil",
         explanation: `${component.reference} references ${ownerReference || "no relay owner"}, but no matching relay coil, timer, or contactor exists in the semantic model.`,
         suggestedFix: "Rename the auxiliary contact to match an existing coil reference or add the missing relay/contactor coil."
+      });
+      continue;
+    }
+
+    const ownerComponent = componentByReference.get(ownerReference);
+    const ownerDefinition = ownerComponent ? findDefinition(ownerComponent.definitionId) : undefined;
+    const ownerCoilInput = ownerDefinition?.terminals.find((terminal) => terminal.role === "coil")?.id;
+    const ownerCoilInputNets =
+      ownerComponent && ownerCoilInput ? (netsByTerminal.get(`${ownerComponent.id}:${ownerCoilInput}`) ?? new Set<string>()) : new Set<string>();
+    const contactTerminalNets = definition.terminals.map((terminal) => ({
+      terminal: terminal.id,
+      nets: netsByTerminal.get(`${component.id}:${terminal.id}`) ?? new Set<string>()
+    }));
+    const upstreamTerminal = contactTerminalNets.find((entry) => entry.nets.has("STOP-CHAIN"));
+    const outputTerminal = contactTerminalNets.find(
+      (entry) => entry.terminal !== upstreamTerminal?.terminal && [...entry.nets].some((net) => ownerCoilInputNets.has(net))
+    );
+
+    if (!upstreamTerminal || !outputTerminal) {
+      findings.push({
+        id: `seal-in-topology-${component.id}`,
+        severity: "error",
+        ruleId: "SEAL_IN_PATH_TOPOLOGY",
+        affectedObjectIds: [component.id, ownerComponent?.id].filter((id): id is string => Boolean(id)),
+        title: "Self-holding contact is not wired across START",
+        explanation: `${component.reference} must bridge STOP-CHAIN to ${ownerReference}:${ownerCoilInput ?? "A1"} so the relay can remain energized after START is released.`,
+        suggestedFix: "Wire one side of the auxiliary contact to the STOP-CHAIN node and the other side to the owner coil input."
       });
     }
   }
@@ -1298,6 +1339,17 @@ export function addConductor(model: CircuitModel, input: AddConductorInput): Cir
         net
       }
     ]
+  };
+}
+
+export function removeConductor(model: CircuitModel, conductorId: string): CircuitModel {
+  if (!model.conductors.some((conductor) => conductor.id === conductorId)) {
+    throw new Error(`Invalid conductor: ${conductorId}`);
+  }
+
+  return {
+    ...model,
+    conductors: model.conductors.filter((conductor) => conductor.id !== conductorId)
   };
 }
 

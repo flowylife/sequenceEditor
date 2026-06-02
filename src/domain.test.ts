@@ -8,6 +8,7 @@ import {
   buildPanelLayout,
   componentCatalog,
   createStarterProject,
+  removeConductor,
   simulateStep,
   summarizeFindings,
   updateComponentSetting,
@@ -24,6 +25,15 @@ describe("electrical sequence domain", () => {
     expect(summary.errors).toBe(0);
     expect(summary.warnings).toBeGreaterThanOrEqual(1);
     expect(findings.some((finding) => finding.ruleId === "PANEL_CLEARANCE")).toBe(true);
+  });
+
+  it("models the K1 seal-in contact as a complete parallel path", () => {
+    const project = createStarterProject();
+    const netlist = buildNetlist(project.model);
+    const stopChain = netlist.nets.find((net) => net.id === "STOP-CHAIN");
+
+    expect(stopChain?.endpoints.map((endpoint) => `${endpoint.reference}:${endpoint.terminal}`)).toContain("K1.13:13");
+    expect(validateCircuit(project.model).some((finding) => finding.ruleId === "SEAL_IN_PATH_TOPOLOGY")).toBe(false);
   });
 
   it("simulates relay seal-in before the timer output is ready", () => {
@@ -218,6 +228,15 @@ describe("electrical sequence domain", () => {
     const findings = validateCircuit(unboundContact);
 
     expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "CONTACT_COIL_BINDING")).toBe(true);
+  });
+
+  it("flags a relay seal-in contact that is not wired across the start command path", () => {
+    const project = createStarterProject();
+    const brokenSealIn = removeConductor(project.model, "w5");
+
+    const findings = validateCircuit(brokenSealIn);
+
+    expect(findings.some((finding) => finding.severity === "error" && finding.ruleId === "SEAL_IN_PATH_TOPOLOGY")).toBe(true);
   });
 
   it("checks simple DIN rail mechanical clearance", () => {

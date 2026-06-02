@@ -1315,7 +1315,7 @@ button {
 
 .terminal-list span,
 .net-list span,
-.conductor-list span {
+.conductor-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1327,6 +1327,12 @@ button {
   background: #ffffff;
   font-size: 12px;
   font-weight: 750;
+}
+
+.conductor-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
 }
 
 .terminal-list small {
@@ -1347,6 +1353,16 @@ button {
 .conductor-list small {
   flex: 0 0 auto;
   color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.conductor-remove {
+  min-height: 28px;
+  padding: 0 8px;
+  border-color: #f0c6c6;
+  color: #b42318;
+  background: #fff5f5;
   font-size: 10px;
   font-weight: 850;
 }

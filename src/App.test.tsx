@@ -254,6 +254,19 @@ describe("Sequence Editor app", () => {
     expect(screen.getByText(/K2\.13 references K2/i)).toBeInTheDocument();
   });
 
+  it("surfaces a broken self-holding path after deleting the K1 seal-in conductor", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText(/K1\.13 Seal-in NO/i));
+    fireEvent.click(screen.getByRole("button", { name: /^specs$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove conductor w5" }));
+    fireEvent.click(screen.getByRole("button", { name: /^validation$/i }));
+
+    expect(screen.getByText("SEAL_IN_PATH_TOPOLOGY")).toBeInTheDocument();
+    expect(screen.getByText(/Self-holding contact is not wired across START/i)).toBeInTheDocument();
+    expect(screen.getByText(/K1\.13 must bridge STOP-CHAIN to K1:A1/i)).toBeInTheDocument();
+  });
+
   it("lets the operator tune KT1 delay and simulates timer done from that setting", async () => {
     render(<App />);
 

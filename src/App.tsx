@@ -46,6 +46,7 @@ import {
   componentCatalog,
   createStarterProject,
   findDefinition,
+  removeConductor,
   simulateStep,
   summarizeFindings,
   updateComponentReference,
@@ -353,6 +354,12 @@ function App() {
     setValidationError(null);
     commitModel(next);
     setSelectedId(input.fromComponentId);
+  };
+
+  const deleteManualConductor = (conductorId: string) => {
+    const next = removeConductor(model, conductorId);
+    setValidationError(null);
+    commitModel(next);
   };
 
   const updateSelectedReference = (componentId: string, reference: string) => {
@@ -685,6 +692,7 @@ function App() {
                     components={model.components}
                     conductors={model.conductors}
                     onAddConductor={addManualConductor}
+                    onRemoveConductor={deleteManualConductor}
                     onUpdateReference={updateSelectedReference}
                     onUpdateSetting={updateSelectedSetting}
                   />
@@ -1100,6 +1108,7 @@ function SpecsPanel({
   components,
   conductors,
   onAddConductor,
+  onRemoveConductor,
   onUpdateReference,
   onUpdateSetting
 }: {
@@ -1109,6 +1118,7 @@ function SpecsPanel({
   components: CircuitComponent[];
   conductors: CircuitModel["conductors"];
   onAddConductor: (input: AddConductorInput) => void;
+  onRemoveConductor: (conductorId: string) => void;
   onUpdateReference: (componentId: string, reference: string) => void;
   onUpdateSetting: (componentId: string, key: string, value: string | number | boolean) => void;
 }) {
@@ -1277,12 +1287,17 @@ function SpecsPanel({
           <div className="soft-empty">No conductors touch this component yet.</div>
         ) : (
           selectedConductors.map((conductor) => (
-            <span key={conductor.id}>
-              <b>
-                {referenceById.get(conductor.from)}:{conductor.fromTerminal} -&gt; {referenceById.get(conductor.to)}:{conductor.toTerminal}
-              </b>
-              <small>{conductor.net}</small>
-            </span>
+            <article key={conductor.id} className="conductor-row">
+              <div>
+                <b>
+                  {referenceById.get(conductor.from)}:{conductor.fromTerminal} -&gt; {referenceById.get(conductor.to)}:{conductor.toTerminal}
+                </b>
+                <small>{conductor.net}</small>
+              </div>
+              <button type="button" className="conductor-remove" aria-label={`Remove conductor ${conductor.id}`} onClick={() => onRemoveConductor(conductor.id)}>
+                Remove
+              </button>
+            </article>
           ))
         )}
       </div>
