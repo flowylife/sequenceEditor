@@ -214,6 +214,35 @@ describe("electrical sequence domain", () => {
     expect(overloaded.blockingReason).toBe("Blocked by OL1 overload trip");
   });
 
+  it("simulates a stuck START contact as a closed run command until STOP opens", () => {
+    const project = createStarterProject();
+    const stuck = simulateStep(project.model, undefined, {
+      startPressed: false,
+      startContactStuck: true,
+      stopPressed: false
+    });
+    const stopped = simulateStep(project.model, stuck, {
+      startPressed: false,
+      startContactStuck: true,
+      stopPressed: true
+    });
+
+    expect(stuck.inputs.startPressed).toBe(false);
+    expect(stuck.inputs.startContactStuck).toBe(true);
+    expect(stuck.componentStates["c-sb1"]).toBe("closed");
+    expect(stuck.componentStates["c-k1"]).toBe("energized");
+    expect(stuck.energizedNets).toContain("RUN-COMMAND");
+    expect(stuck.interlocks.find((interlock) => interlock.id === "interlock-start-stuck")).toMatchObject({
+      state: "closed",
+      blocking: false,
+      explanation: "START contact is forced closed by a stuck-contact fault."
+    });
+
+    expect(stopped.componentStates["c-sb0"]).toBe("open");
+    expect(stopped.componentStates["c-k1"]).toBe("idle");
+    expect(stopped.blockingReason).toBe("Blocked by SB0 stop contact");
+  });
+
   it("projects sequence circuit behavior into IEC ladder rungs", () => {
     const project = createStarterProject();
     let snapshot = simulateStep(project.model, undefined, { startPressed: true });

@@ -31,6 +31,7 @@ const projectInputSchema = z.object({
 
 const simulationInputsSchema = z.object({
   startPressed: z.boolean(),
+  startContactStuck: z.boolean().default(false),
   stopPressed: z.boolean(),
   limitClosed: z.boolean(),
   overloadHealthy: z.boolean(),

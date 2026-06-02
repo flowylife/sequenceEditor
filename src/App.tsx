@@ -99,11 +99,23 @@ const railLabels: Record<string, string> = {
 
 const initialSimulationInputs: SimulationInputs = {
   startPressed: true,
+  startContactStuck: false,
   stopPressed: false,
   limitClosed: true,
   overloadHealthy: true,
   controlFuseHealthy: true
 };
+
+function normalizeSimulationInputs(inputs: Partial<SimulationInputs>): SimulationInputs {
+  return {
+    startPressed: inputs.startPressed ?? false,
+    startContactStuck: inputs.startContactStuck ?? false,
+    stopPressed: inputs.stopPressed ?? false,
+    limitClosed: inputs.limitClosed ?? true,
+    overloadHealthy: inputs.overloadHealthy ?? true,
+    controlFuseHealthy: inputs.controlFuseHealthy ?? true
+  };
+}
 
 function getDefaultSelectedComponentId(model: CircuitModel) {
   return model.components.find((component) => component.reference === "K1")?.id ?? model.components[0]?.id;
@@ -194,7 +206,7 @@ function signalActive(snapshot: SimulationSnapshot, key: (typeof signalRows)[num
     case "fuse":
       return snapshot.inputs.controlFuseHealthy;
     case "start":
-      return snapshot.inputs.startPressed;
+      return snapshot.inputs.startPressed || snapshot.inputs.startContactStuck;
     case "stop":
       return !snapshot.inputs.stopPressed;
     case "limit":
@@ -273,7 +285,9 @@ function App() {
 
     try {
       const responsePresets = await listSimulationPresets(nextProjectId);
-      const presets = Array.isArray(responsePresets) ? responsePresets : [];
+      const presets = Array.isArray(responsePresets)
+        ? responsePresets.map((preset) => ({ ...preset, inputs: normalizeSimulationInputs(preset.inputs) }))
+        : [];
       setSelectedPresetId((currentId) =>
         currentId && presets.some((preset) => preset.id === currentId) ? currentId : presets[0]?.id
       );
@@ -390,12 +404,19 @@ function App() {
   const resetSimulation = () => {
     setSnapshot(undefined);
     setSimulationHistory([]);
-    setSimulationInputs({ startPressed: false, stopPressed: false, limitClosed: true, overloadHealthy: true, controlFuseHealthy: true });
+    setSimulationInputs({
+      startPressed: false,
+      startContactStuck: false,
+      stopPressed: false,
+      limitClosed: true,
+      overloadHealthy: true,
+      controlFuseHealthy: true
+    });
     setInspectorTab("simulation");
   };
 
   const updateSimulationInputs = (nextInputs: SimulationInputs) => {
-    setSimulationInputs(nextInputs);
+    setSimulationInputs(normalizeSimulationInputs(nextInputs));
     setSyncStatus("local");
     setSyncMessage("Simulation input state changed");
   };
@@ -439,7 +460,7 @@ function App() {
 
   const applyPreset = () => {
     if (!selectedPreset) return;
-    setSimulationInputs(selectedPreset.inputs);
+    setSimulationInputs(normalizeSimulationInputs(selectedPreset.inputs));
     setSnapshot(undefined);
     setSimulationHistory([]);
     setInspectorTab("simulation");
@@ -929,7 +950,7 @@ function SchematicWorkspace({
             <text x="86" y="599">Energized path</text>
             <circle cx="232" cy="594" r="6" className="legend-open" />
             <text x="246" y="599">Open or idle path</text>
-            <text x="578" y="599">FUSE {snapshot?.inputs.controlFuseHealthy ? "closed" : "open"} · START {snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · OVERLOAD {snapshot?.inputs.overloadHealthy ? "healthy" : "tripped"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
+            <text x="578" y="599">FUSE {snapshot?.inputs.controlFuseHealthy ? "closed" : "open"} · START {snapshot?.inputs.startContactStuck ? "stuck" : snapshot?.inputs.startPressed ? "closed" : "open"} · STOP {snapshot?.inputs.stopPressed ? "open" : "closed"} · LIMIT {snapshot?.inputs.limitClosed ? "closed" : "open"} · OVERLOAD {snapshot?.inputs.overloadHealthy ? "healthy" : "tripped"} · Timer {snapshot?.timerElapsedMs ?? 0} ms</text>
           </g>
         </svg>
       </div>
@@ -1767,6 +1788,16 @@ function SimulationStrip({
         </button>
         <button
           type="button"
+          className={`fault-button ${inputs.startContactStuck ? "is-active" : ""}`}
+          aria-label="START stuck fault"
+          aria-pressed={inputs.startContactStuck}
+          onClick={() => onInputsChange({ ...inputs, startContactStuck: !inputs.startContactStuck, startPressed: false })}
+        >
+          <AlertTriangle size={14} />
+          STUCK
+        </button>
+        <button
+          type="button"
           className={inputs.controlFuseHealthy ? "is-active" : "stop-button is-active"}
           aria-pressed={!inputs.controlFuseHealthy}
           onClick={() => onInputsChange({ ...inputs, controlFuseHealthy: !inputs.controlFuseHealthy })}
@@ -1839,7 +1870,7 @@ function SimulationStrip({
       </div>
       <div className="strip-readings">
         <span>FUSE {inputs.controlFuseHealthy ? "closed" : "open"}</span>
-        <span>START {inputs.startPressed ? "closed" : "open"}</span>
+        <span>START {inputs.startContactStuck ? "stuck closed" : inputs.startPressed ? "closed" : "open"}</span>
         <span>STOP {inputs.stopPressed ? "open" : "closed"}</span>
         <span>LIMIT {inputs.limitClosed ? "closed" : "open"}</span>
         <span>OVERLOAD {inputs.overloadHealthy ? "healthy" : "tripped"}</span>

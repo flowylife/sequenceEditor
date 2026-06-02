@@ -213,6 +213,30 @@ describe("Sequence Editor app", () => {
     expect(stopSignalRow).toHaveTextContent("off");
   });
 
+  it("lets the operator force a stuck START contact and still stop the sequence", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Reset$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /START stuck fault/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 1 running/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("START stuck closed")).toBeInTheDocument();
+    expect(screen.getAllByText(/K1 coil: 24 VAC \/ 0.25 A/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("START stuck contact")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^STOP$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 2 running/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("STOP open")).toBeInTheDocument();
+    expect(screen.getAllByText(/K1 coil: 0 VAC \/ 0.00 A/i).length).toBeGreaterThan(0);
+  });
+
   it("saves and reapplies a simulation input preset through the API", async () => {
     vi.stubGlobal(
       "fetch",
@@ -229,6 +253,7 @@ describe("Sequence Editor app", () => {
                   name: "Saved simulation preset",
                   inputs: {
                     startPressed: false,
+                    startContactStuck: false,
                     stopPressed: false,
                     limitClosed: true,
                     overloadHealthy: true,
@@ -280,6 +305,7 @@ describe("Sequence Editor app", () => {
                     name: "Fuse open diagnostic",
                     inputs: {
                       startPressed: false,
+                      startContactStuck: false,
                       stopPressed: false,
                       limitClosed: true,
                       overloadHealthy: true,

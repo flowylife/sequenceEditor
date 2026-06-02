@@ -131,6 +131,7 @@ export interface ValidationFinding {
 
 export interface SimulationInputs {
   startPressed: boolean;
+  startContactStuck: boolean;
   stopPressed: boolean;
   limitClosed: boolean;
   overloadHealthy: boolean;
@@ -1180,6 +1181,7 @@ export function simulateStep(
   const hasHardFault = findings.some((finding) => finding.severity === "error");
   const inputs: SimulationInputs = {
     startPressed: inputPatch.startPressed ?? previous?.inputs.startPressed ?? true,
+    startContactStuck: inputPatch.startContactStuck ?? previous?.inputs.startContactStuck ?? false,
     stopPressed: inputPatch.stopPressed ?? previous?.inputs.stopPressed ?? false,
     limitClosed: inputPatch.limitClosed ?? previous?.inputs.limitClosed ?? true,
     overloadHealthy: inputPatch.overloadHealthy ?? previous?.inputs.overloadHealthy ?? true,
@@ -1211,6 +1213,16 @@ export function simulateStep(
       blockingReason: "Blocked by SB0 stop contact"
     },
     {
+      id: "interlock-start-stuck",
+      componentId: getComponentByReference(model, "SB1")?.id ?? "missing-SB1",
+      reference: "SB1",
+      label: "START stuck contact",
+      state: inputs.startContactStuck ? "closed" : "open",
+      blocking: false,
+      explanation: inputs.startContactStuck ? "START contact is forced closed by a stuck-contact fault." : "START contact fault is not forced.",
+      blockingReason: "START contact fault is forced"
+    },
+    {
       id: "interlock-limit",
       componentId: getComponentByReference(model, "LS1")?.id ?? "missing-LS1",
       reference: "LS1",
@@ -1233,7 +1245,7 @@ export function simulateStep(
   ];
   const blockingReason = interlocks.find((interlock) => interlock.blocking)?.blockingReason;
   const stopChainClosed = stopButtonClosed && limitClosed;
-  const startContactClosed = inputs.startPressed;
+  const startContactClosed = inputs.startPressed || inputs.startContactStuck;
   const previousRelayEnergized = Object.entries(previous?.componentStates ?? {}).some(([componentId, state]) => {
     const component = model.components.find((item) => item.id === componentId);
     return component?.reference === "K1" && state === "energized";

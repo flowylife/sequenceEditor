@@ -1054,6 +1054,19 @@ button {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
 }
 
+.fault-button {
+  color: #7c2d12;
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.fault-button.is-active {
+  color: #9a3412;
+  border-color: #fb923c;
+  background: #ffedd5;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+}
+
 .timeline {
   position: relative;
   flex: 1;
